@@ -5,6 +5,8 @@
 
 // 全局变量，存储所有的高亮数据
 window.highlights = [];
+// 存储索引为1的文本节点内容作为文章标题
+window.textNodeTitle = '';
 
 // 添加初始化监控，确保全局变量正确设置
 (function() {
@@ -188,14 +190,50 @@ window.highlightSelectedText = function() {
           cfiRange = window.book_rendition.manager.current.content.cfiFromRange(range);
           console.log("生成的CFI:", cfiRange);
           
+          // 存储精确的epubCfi用于定位
+          const epubCfi = cfiRange;
+          
+          // 获取完整的article信息
+          let articleInfo = '';
+          
+          // 优先使用索引为1的文本节点内容
+          if (window.textNodeTitle) {
+            articleInfo = window.textNodeTitle;
+            console.log("使用索引为1的文本节点作为文章标题:", articleInfo);
+          }
+          // 回退到其他方法
+          else if (bookInfo && bookInfo.article && bookInfo.article !== '未知文章') {
+            articleInfo = bookInfo.article;
+          } 
+          else if (iframe && iframe.contentDocument && iframe.contentDocument.title) {
+            articleInfo = iframe.contentDocument.title;
+          }
+          else if (contextInfo && contextInfo.nearbyHeadings && contextInfo.nearbyHeadings.length > 0) {
+            articleInfo = contextInfo.nearbyHeadings[0].text;
+          }
+          else if (window.book_chapterTitle) {
+            articleInfo = window.book_chapterTitle;
+          }
+          else {
+            const now = new Date();
+            articleInfo = `高亮于 ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`;
+          }
+          
+          console.log("文章信息:", articleInfo);
+          
           // 使用真实CFI创建高亮数据
           highlightData = {
             id: highlightId,
             cfi: cfiRange,
+            epubCfi: epubCfi, // 添加精确的CFI用于定位
             type: getHighlightType(selection_text),
             text: selection_text,
             sentence: sentence || selection_text,
             chapter: contextInfo ? contextInfo.chapterTitle : '',
+            article: articleInfo, // 添加文章信息
+            textNodeTitle: window.textNodeTitle || null, // 保存文本节点[1]的内容
+            bookInfo: bookInfo, // 保存完整的书籍信息
+            timestamp: new Date().getTime(),
             created: new Date().toISOString()
           };
         } catch (e) {
@@ -222,6 +260,10 @@ window.highlightSelectedText = function() {
           text: selection_text,
           sentence: sentence || selection_text,
           chapter: contextInfo ? contextInfo.chapterTitle : '',
+          textNodeTitle: window.textNodeTitle || null, // 保存文本节点[1]的内容
+          bookInfo: bookInfo, // 保存完整的书籍信息
+          article: window.textNodeTitle || (bookInfo ? bookInfo.article : ''), // 添加文章信息
+          timestamp: new Date().getTime(),
           created: new Date().toISOString(),
           spinePosition: chapterIndex
         };
@@ -813,6 +855,14 @@ function extractBookInfo() {
       while ((node = walker.nextNode()) && count < 5) {
         if (node.textContent.trim().length > 10) {
           console.log(`文本节点[${count}]:`, node.textContent.trim());
+          // 如果是索引为1的文本节点，保存为文章标题
+          if (count === 1) {
+            // 保存索引为1的文本节点内容到全局变量
+            window.textNodeTitle = node.textContent.trim();
+            console.log("保存索引为1的文本节点作为文章标题:", window.textNodeTitle);
+            // 同时设置到info对象
+            info.article = window.textNodeTitle;
+          }
           count++;
         }
       }
@@ -820,6 +870,36 @@ function extractBookInfo() {
     
     // 标准提取过程...
     // 尝试从导航获取章节名
+    let currentHref = null;
+    if (window.book_rendition) {
+      try {
+        // 安全地获取位置信息
+        let location = null;
+        
+        try {
+          // 检查location是否为函数
+          if (typeof window.book_rendition.location === 'function') {
+            location = window.book_rendition.location();
+          } 
+          // 检查是否是直接属性
+          else if (window.book_rendition.location) {
+            location = window.book_rendition.location;
+          }
+          
+          // 从location中提取href
+          if (location && location.start && location.start.href) {
+            currentHref = location.start.href;
+          } else if (window.book_rendition.currentLocation && window.book_rendition.currentLocation.start) {
+            currentHref = window.book_rendition.currentLocation.start.href;
+          }
+        } catch (e) {
+          console.error("获取位置信息时出错:", e);
+        }
+      } catch (e) {
+        console.error("访问book_rendition时出错:", e);
+      }
+    }
+    
     if (window.book_epub && window.book_epub.navigation && currentHref) {
       try {
         // 获取导航目录
@@ -1577,7 +1657,30 @@ function renderHighlightList(listElement, highlights) {
     let timeStr = '';
     
     // 尝试获取最有意义的上下文信息
-    if (highlight.bookInfo && highlight.bookInfo.article && highlight.bookInfo.article !== '未知文章') {
+    // 优先使用保存的文本节点[1]或article字段
+    if (highlight.textNodeTitle) {
+      contextInfo = highlight.textNodeTitle;
+    } else if (window.textNodeTitle) {
+      // 这是当前章节的文本节点[1]，只有当高亮在当前章节时使用
+      if (highlight.href && window.book_rendition && window.book_rendition.location) {
+        let currentHref = '';
+        try {
+          if (window.book_rendition.location().start) {
+            currentHref = window.book_rendition.location().start.href;
+          }
+        } catch (e) {}
+        
+        // 如果高亮在当前章节，可以使用当前的文本节点标题
+        if (currentHref && highlight.href && 
+            (currentHref.includes(highlight.href) || highlight.href.includes(currentHref))) {
+          contextInfo = window.textNodeTitle;
+        }
+      }
+    } else if (highlight.article) {
+      contextInfo = highlight.article;
+    }
+    // 回退到其他可用信息
+    else if (highlight.bookInfo && highlight.bookInfo.article && highlight.bookInfo.article !== '未知文章') {
       contextInfo = highlight.bookInfo.article;
     } else if (highlight.chapter && highlight.chapter !== '未知章节') {
       contextInfo = highlight.chapter;
@@ -1586,8 +1689,8 @@ function renderHighlightList(listElement, highlights) {
     } else if (highlight.sentence && highlight.sentence.length > 0 && highlight.sentence !== highlight.text) {
       // 使用句子的前20个字符作为上下文
       contextInfo = highlight.sentence.length > 20 ? 
-                    highlight.sentence.substring(0, 20) + '...' : 
-                    highlight.sentence;
+                   highlight.sentence.substring(0, 20) + '...' : 
+                   highlight.sentence;
     }
     
     if (highlight.timestamp) {
@@ -1630,7 +1733,15 @@ function renderHighlightList(listElement, highlights) {
           if (highlight.epubCfi) {
             try {
               console.log("使用epubCfi跳转:", highlight.epubCfi);
+              // 保存当前视图设置
+              const viewSettings = saveViewSettings();
+              
+              // 进行跳转
               await window.book_rendition.display(highlight.epubCfi);
+              
+              // 恢复视图设置
+              restoreViewSettings(viewSettings);
+              
               return true;
             } catch (e) {
               console.warn("epubCfi跳转失败:", e);
@@ -1641,12 +1752,73 @@ function renderHighlightList(listElement, highlights) {
           if (highlight.cfi) {
             try {
               console.log("使用cfi跳转:", highlight.cfi);
-              // 先检查CFI是否有效
-              window.book_epub.spine.get(highlight.cfi);
+              // 保存当前视图设置
+              const viewSettings = saveViewSettings();
+              
+              // 不检查CFI有效性，直接尝试跳转
               await window.book_rendition.display(highlight.cfi);
+              
+              // 恢复视图设置
+              restoreViewSettings(viewSettings);
+              
+              // 在跳转后，尝试查找文本，以便更精确定位
+              setTimeout(() => {
+                try {
+                  const iframe = document.querySelector('iframe');
+                  if (iframe && iframe.contentDocument && highlight.text) {
+                    const searchText = highlight.text.trim();
+                    if (searchText.length > 3) {
+                      console.log("尝试在文档中查找高亮文本:", searchText);
+                      // 使用新的查找和高亮函数
+                      findAndHighlightText(iframe, searchText);
+                    }
+                  }
+                } catch (e) {
+                  console.warn("文本查找失败:", e);
+                }
+              }, 400); // 延迟确保页面已加载
+              
               return true;
             } catch (e) {
               console.warn("cfi跳转失败:", e);
+              
+              // 如果直接跳转失败，尝试使用正则表达式提取基本CFI部分
+              try {
+                const cfiMatch = highlight.cfi.match(/epubcfi\(([^!]+)[!]?/);
+                if (cfiMatch && cfiMatch[0]) {
+                  const baseCfi = cfiMatch[0].endsWith('!') ? cfiMatch[0].slice(0, -1) : cfiMatch[0];
+                  console.log("尝试使用基本CFI跳转:", baseCfi);
+                  
+                  // 保存当前视图设置
+                  const viewSettings = saveViewSettings();
+                  
+                  await window.book_rendition.display(baseCfi);
+                  
+                  // 恢复视图设置
+                  restoreViewSettings(viewSettings);
+                  
+                  // 在跳转后，尝试查找文本
+                  setTimeout(() => {
+                    try {
+                      const iframe = document.querySelector('iframe');
+                      if (iframe && iframe.contentDocument && highlight.text) {
+                        const searchText = highlight.text.trim();
+                        if (searchText.length > 3) {
+                          console.log("尝试在文档中查找高亮文本:", searchText);
+                          // 使用新的查找和高亮函数
+                          findAndHighlightText(iframe, searchText);
+                        }
+                      }
+                    } catch (e) {
+                      console.warn("文本查找失败:", e);
+                    }
+                  }, 400);
+                  
+                  return true;
+                }
+              } catch (regexError) {
+                console.warn("正则提取CFI失败:", regexError);
+              }
             }
           }
           
@@ -1654,7 +1826,32 @@ function renderHighlightList(listElement, highlights) {
           if (highlight.href) {
             try {
               console.log("使用href跳转:", highlight.href);
+              
+              // 保存当前视图设置
+              const viewSettings = saveViewSettings();
+              
               await window.book_rendition.display(highlight.href);
+              
+              // 恢复视图设置
+              restoreViewSettings(viewSettings);
+              
+              // 在跳转后，尝试查找文本
+              setTimeout(() => {
+                try {
+                  const iframe = document.querySelector('iframe');
+                  if (iframe && iframe.contentDocument && highlight.text) {
+                    const searchText = highlight.text.trim();
+                    if (searchText.length > 3) {
+                      console.log("尝试在文档中查找高亮文本:", searchText);
+                      // 使用新的查找和高亮函数
+                      findAndHighlightText(iframe, searchText);
+                    }
+                  }
+                } catch (e) {
+                  console.warn("文本查找失败:", e);
+                }
+              }, 400);
+              
               return true;
             } catch (e) {
               console.warn("href跳转失败:", e);
@@ -1667,7 +1864,31 @@ function renderHighlightList(listElement, highlights) {
               console.log("使用spinePosition跳转:", highlight.spinePosition);
               const spineItem = window.book_epub.spine.get(highlight.spinePosition);
               if (spineItem) {
+                // 保存当前视图设置
+                const viewSettings = saveViewSettings();
+                
                 await window.book_rendition.display(spineItem.href);
+                
+                // 恢复视图设置
+                restoreViewSettings(viewSettings);
+                
+                // 在跳转后，尝试查找文本
+                setTimeout(() => {
+                  try {
+                    const iframe = document.querySelector('iframe');
+                    if (iframe && iframe.contentDocument && highlight.text) {
+                      const searchText = highlight.text.trim();
+                      if (searchText.length > 3) {
+                        console.log("尝试在文档中查找高亮文本:", searchText);
+                        // 使用新的查找和高亮函数
+                        findAndHighlightText(iframe, searchText);
+                      }
+                    }
+                  } catch (e) {
+                    console.warn("文本查找失败:", e);
+                  }
+                }, 400);
+                
                 return true;
               }
             } catch (e) {
@@ -1683,13 +1904,75 @@ function renderHighlightList(listElement, highlights) {
                 const toc = window.book_epub.navigation.toc;
                 for (let i = 0; i < toc.length; i++) {
                   if (toc[i].label === highlight.chapter && toc[i].href) {
+                    // 保存当前视图设置
+                    const viewSettings = saveViewSettings();
+                    
                     await window.book_rendition.display(toc[i].href);
+                    
+                    // 恢复视图设置
+                    restoreViewSettings(viewSettings);
+                    
+                    // 在跳转后，尝试查找文本
+                    setTimeout(() => {
+                      try {
+                        const iframe = document.querySelector('iframe');
+                        if (iframe && iframe.contentDocument && highlight.text) {
+                          const searchText = highlight.text.trim();
+                          if (searchText.length > 3) {
+                            console.log("尝试在文档中查找高亮文本:", searchText);
+                            // 使用新的查找和高亮函数
+                            findAndHighlightText(iframe, searchText);
+                          }
+                        }
+                      } catch (e) {
+                        console.warn("文本查找失败:", e);
+                      }
+                    }, 400);
+                    
                     return true;
                   }
                 }
               }
             } catch (e) {
               console.warn("章节名称跳转失败:", e);
+            }
+          }
+          
+          // 如果上述方法都失败，但有文本内容，尝试在第一章查找文本
+          if (highlight.text) {
+            try {
+              console.log("尝试在第一章查找文本:", highlight.text.substring(0, 20) + "...");
+              if (window.book_epub && window.book_epub.spine && window.book_epub.spine.items && window.book_epub.spine.items.length > 0) {
+                // 保存当前视图设置
+                const viewSettings = saveViewSettings();
+                
+                // 跳转到第一章
+                await window.book_rendition.display(window.book_epub.spine.items[0].href);
+                
+                // 恢复视图设置
+                restoreViewSettings(viewSettings);
+                
+                // 在跳转后，尝试查找文本
+                setTimeout(() => {
+                  try {
+                    const iframe = document.querySelector('iframe');
+                    if (iframe && iframe.contentDocument && highlight.text) {
+                      const searchText = highlight.text.trim();
+                      if (searchText.length > 3) {
+                        console.log("尝试在文档中查找高亮文本:", searchText);
+                        // 使用新的查找和高亮函数
+                        findAndHighlightText(iframe, searchText);
+                      }
+                    }
+                  } catch (e) {
+                    console.warn("文本查找失败:", e);
+                  }
+                }, 400);
+                
+                return true;
+              }
+            } catch (e) {
+              console.warn("在第一章查找文本失败:", e);
             }
           }
           
@@ -1875,4 +2158,186 @@ window.deleteSelectedHighlight = function() {
     displayAlert("删除高亮失败", "error");
     return false;
   }
-}; 
+};
+
+// 高亮iframe中匹配的文本
+function highlightMatchedText(iframe, searchText) {
+  if (!iframe || !iframe.contentDocument || !searchText || searchText.length < 3) return;
+  
+  try {
+    const doc = iframe.contentDocument;
+    const body = doc.body;
+    
+    // 保存当前滚动位置
+    const currentScrollLeft = doc.documentElement.scrollLeft;
+    
+    // 递归查找文本节点并高亮匹配文本
+    function traverseNodes(node) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const text = node.nodeValue;
+        if (text && text.includes(searchText)) {
+          // 找到匹配的文本，创建高亮元素
+          const range = doc.createRange();
+          const startIndex = text.indexOf(searchText);
+          
+          range.setStart(node, startIndex);
+          range.setEnd(node, startIndex + searchText.length);
+          
+          const highlightSpan = doc.createElement('span');
+          highlightSpan.className = 'temp-highlight';
+          highlightSpan.style.backgroundColor = 'yellow';
+          highlightSpan.style.color = 'black';
+          highlightSpan.style.transition = 'background-color 2s';
+          
+          range.surroundContents(highlightSpan);
+          
+          // 滚动到高亮元素（保持水平位置不变）
+          highlightSpan.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center',
+            inline: 'nearest'
+          });
+          
+          // 恢复原来的水平滚动位置
+          setTimeout(() => {
+            doc.documentElement.scrollLeft = currentScrollLeft;
+          }, 50);
+          
+          // 2秒后移除高亮效果
+          setTimeout(() => {
+            if (highlightSpan.parentNode) {
+              // 替换回原始文本
+              const textNode = doc.createTextNode(searchText);
+              highlightSpan.parentNode.replaceChild(textNode, highlightSpan);
+            }
+          }, 2000);
+          
+          return true; // 找到了匹配
+        }
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        // 递归处理子节点
+        for (let i = 0; i < node.childNodes.length; i++) {
+          if (traverseNodes(node.childNodes[i])) {
+            return true; // 找到了匹配
+          }
+        }
+      }
+      return false; // 没有找到匹配
+    }
+    
+    // 从body开始遍历
+    return traverseNodes(body);
+  } catch (e) {
+    console.warn("高亮匹配文本失败:", e);
+    return false;
+  }
+}
+
+// 使用原生查找和高亮组合方式
+function findAndHighlightText(iframe, text) {
+  if (!iframe || !iframe.contentDocument || !text) return false;
+  
+  try {
+    const searchText = text.trim();
+    if (searchText.length > 3) {
+      console.log("尝试在文档中查找并高亮文本:", searchText);
+      
+      // 保存当前滚动位置
+      const currentScrollLeft = iframe.contentDocument.documentElement.scrollLeft;
+      
+      // 先使用浏览器的find方法定位
+      const found = iframe.contentWindow.find(searchText);
+      
+      if (found) {
+        // 获取当前选中内容
+        const selection = iframe.contentWindow.getSelection();
+        if (selection && !selection.isCollapsed) {
+          // 创建一个临时高亮
+          const range = selection.getRangeAt(0);
+          const span = iframe.contentDocument.createElement('span');
+          span.className = 'temp-highlight';
+          span.style.backgroundColor = 'yellow';
+          span.style.color = 'black';
+          span.style.transition = 'background-color 2s';
+          
+          // 清除原始选择
+          iframe.contentWindow.getSelection().removeAllRanges();
+          
+          try {
+            // 尝试环绕高亮
+            range.surroundContents(span);
+            
+            // 滚动到视图中央（保持水平位置不变）
+            span.scrollIntoView({
+              behavior: 'smooth',
+              block: 'center',
+              inline: 'nearest'
+            });
+            
+            // 恢复原来的水平滚动位置
+            setTimeout(() => {
+              iframe.contentDocument.documentElement.scrollLeft = currentScrollLeft;
+            }, 50);
+            
+            // 2秒后移除高亮
+            setTimeout(() => {
+              if (span.parentNode) {
+                // 保留原文本内容
+                const textContent = span.textContent;
+                const textNode = iframe.contentDocument.createTextNode(textContent);
+                span.parentNode.replaceChild(textNode, span);
+              }
+            }, 2000);
+            
+            return true;
+          } catch (e) {
+            console.warn("创建高亮失败:", e);
+            // 如果环绕失败，至少确保滚动到选中区域
+            const selection = iframe.contentWindow.getSelection();
+            if (selection && !selection.isCollapsed) {
+              const range = selection.getRangeAt(0);
+              if (range.startContainer.parentElement) {
+                range.startContainer.parentElement.scrollIntoView({
+                  behavior: 'smooth',
+                  block: 'center',
+                  inline: 'nearest'
+                });
+                
+                // 恢复原来的水平滚动位置
+                setTimeout(() => {
+                  iframe.contentDocument.documentElement.scrollLeft = currentScrollLeft;
+                }, 50);
+              }
+            }
+          }
+        }
+      } else {
+        // 如果浏览器查找失败，尝试手动查找和高亮
+        return highlightMatchedText(iframe, searchText);
+      }
+    }
+  } catch (e) {
+    console.warn("文本查找和高亮失败:", e);
+  }
+  return false;
+}
+
+// 保存当前视图设置
+function saveViewSettings() {
+  return {
+    flow: window.book_rendition.settings ? window.book_rendition.settings.flow : null,
+    spread: window.book_rendition.settings ? window.book_rendition.settings.spread : null
+  };
+}
+
+// 恢复视图设置
+function restoreViewSettings(settings) {
+  if (window.book_rendition && window.book_rendition.settings && settings.flow && settings.spread) {
+    if (window.book_rendition.settings.flow !== settings.flow || 
+        window.book_rendition.settings.spread !== settings.spread) {
+      console.log("恢复原始视图设置:", settings);
+      window.book_rendition.settings.flow = settings.flow;
+      window.book_rendition.settings.spread = settings.spread;
+    }
+  }
+}
