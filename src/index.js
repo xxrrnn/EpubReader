@@ -1,6 +1,29 @@
 const { app, BrowserWindow, globalShortcut, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 
+// 开发环境下的热重载功能
+if (process.env.NODE_ENV !== 'production') {
+	try {
+		const electronReload = require('electron-reload');
+		
+		// 监视的文件和目录
+		electronReload(__dirname, {
+			electron: path.join(__dirname, '../node_modules/electron'),
+			hardResetMethod: 'quit', // 使用quit而不是exit，以避免强制关闭
+			ignored: [
+				/node_modules/,
+				/epubs/,
+				/[\/\\]\./,
+				/.*\.json$/
+			]
+		});
+		
+		console.log('热重载功能已启用 - 修改src目录下的文件将自动重新加载应用');
+	} catch (error) {
+		console.error('热重载功能加载失败:', error);
+	}
+}
+
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
 	// eslint-disable-line global-require
@@ -50,6 +73,14 @@ const createWindow = () => {
 	globalShortcut.register('f5', () => {
 		mainWindow.reload();
 	});
+
+	// 开发环境下添加Ctrl+R快捷键重载
+	if (process.env.NODE_ENV === 'development') {
+		globalShortcut.register('CommandOrControl+R', () => {
+			console.log('手动触发重新加载');
+			mainWindow.reload();
+		});
+	}
 
 	// Event listeners for window actions
 	ipcMain.on('closeApp', () => {

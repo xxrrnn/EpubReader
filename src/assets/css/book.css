@@ -373,3 +373,170 @@
 		background-color: rgba(0,0,0,0)	
 	}
 }
+
+/* 高亮文本的样式 */
+.highlight-text {
+    background-color: rgba(227, 178, 48, 0.3);
+    cursor: pointer;
+    border-radius: 2px;
+}
+
+.highlight-text:hover {
+    background-color: rgba(227, 178, 48, 0.5);
+}
+
+/* 高亮列表按钮样式 */
+#highlight-list-btn {
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+#highlight-list-btn:hover {
+    transform: scale(1.1);
+    filter: drop-shadow(0 0 3px rgba(255, 215, 0, 0.7));
+}
+
+/* 高亮列表弹出窗口样式 */
+#highlight-list-popup {
+    width: 500px;
+    max-height: 600px;
+    padding: 0;
+    overflow: hidden;
+}
+
+.popup-header {
+    padding: 15px;
+    background-color: #f8f8f8;
+    border-bottom: 1px solid #ddd;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.popup-header h3 {
+    margin: 0;
+    color: #333;
+    font-size: 18px;
+}
+
+.popup-close {
+    color: #aaa;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.popup-close:hover {
+    color: #555;
+}
+
+.popup-tabs {
+    display: flex;
+    border-bottom: 1px solid #ddd;
+    background-color: #f8f8f8;
+}
+
+.tab-button {
+    flex: 1;
+    background-color: transparent;
+    border: none;
+    padding: 10px 15px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: bold;
+    transition: background-color 0.2s;
+}
+
+.tab-button:hover {
+    background-color: #f0f0f0;
+}
+
+.tab-button.active {
+    background-color: #fff;
+    border-bottom: 3px solid #FFD700;
+}
+
+.popup-body {
+    padding: 15px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+.popup-highlight-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.popup-highlight-item {
+    padding: 12px;
+    margin-bottom: 12px;
+    border-left: 3px solid #ddd;
+    background-color: #f9f9f9;
+    border-radius: 3px;
+    position: relative;
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.popup-highlight-item:hover {
+    background-color: #f0f0f0;
+}
+
+.popup-highlight-item.highlight-type-word {
+    border-left-color: yellow;
+}
+
+.popup-highlight-item.highlight-type-phrase {
+    border-left-color: orange;
+}
+
+.popup-highlight-item.highlight-type-sentence {
+    border-left-color: #8eff52;
+}
+
+.popup-highlight-text {
+    font-size: 14px;
+    margin-bottom: 5px;
+    color: #333;
+    line-height: 1.4;
+    font-weight: normal;
+}
+
+.popup-highlight-info {
+    font-size: 12px;
+    color: #777;
+    display: flex;
+    justify-content: space-between;
+    margin-top: 8px;
+}
+
+.popup-highlight-chapter {
+    max-width: 70%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #555;
+    font-style: italic;
+}
+
+.popup-highlight-time {
+    color: #888;
+    font-size: 11px;
+}
+
+.popup-highlight-item.empty {
+    text-align: center;
+    color: #999;
+    font-style: italic;
+    padding: 20px;
+}

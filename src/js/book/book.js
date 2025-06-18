@@ -60,7 +60,53 @@ var loadBook = async function(styleSettings = null) {
 
     // Load epub and rendition 
     book_epub = ePub(await window.appConfig.dirname() + "/epubs/" + epubCodeSearch + "/epub.epub", { openAs: "epub"})
+    
+    // 设置全局变量，确保textSelection.js可以访问
+    window.book_epub = book_epub;
+    console.log("已设置全局变量 window.book_epub 供高亮功能使用");
+    
 	book_rendition = book_epub.renderTo("book-content-columns", { manager: bookLayoutStyle.manager, flow: bookLayoutStyle.flow, width: bookLayoutStyle.width, height: "100%"});
+	
+	// 设置全局变量rendition
+    window.book_rendition = book_rendition;
+    console.log("已设置全局变量 window.book_rendition 供高亮功能使用");
+    
+    // 确保rendition有必要的方法
+    if (window.book_rendition && !window.book_rendition.annotations) {
+        console.warn("book_rendition对象缺少annotations属性，尝试初始化");
+        window.book_rendition.annotations = {
+            add: function(type, cfi, data, callback, className, styles) {
+                console.log("使用自定义annotations.add方法");
+                try {
+                    return window.book_rendition.highlight(cfi, data, callback, className, styles);
+                } catch (e) {
+                    console.error("自定义annotations.add方法失败:", e);
+                    return null;
+                }
+            },
+            remove: function(cfiRange, type) {
+                try {
+                    return window.book_rendition.unhighlight(cfiRange, type);
+                } catch (e) {
+                    console.error("自定义annotations.remove方法失败:", e);
+                    return null;
+                }
+            },
+            clear: function() {
+                console.log("清除所有annotations");
+                // 自定义实现，可以通过iframe操作内容
+                try {
+                    const iframe = document.querySelector('iframe');
+                    if (iframe && iframe.contentDocument) {
+                        const highlights = iframe.contentDocument.querySelectorAll('.highlight-text');
+                        highlights.forEach(el => el.remove());
+                    }
+                } catch (e) {
+                    console.error("清除annotations失败:", e);
+                }
+            }
+        };
+    }
 
 	// Get back where you left off 
     if (book_infos.lastPageOpened != null){
@@ -107,23 +153,105 @@ var loadBook = async function(styleSettings = null) {
         // Load chapter list in navbar
         if (first_time_rendered) {
             loadChaptersList()
-			WebFont.load({
-				google: {
-					families: ['Inter', 'IBM Plex Serif']
-				},
-				context: window.frames[0].frameElement.contentWindow,
-			})
-			first_time_rendered = false
+            WebFont.load({
+                google: {
+                    families: ['Inter', 'IBM Plex Serif']
+                },
+                context: window.frames[0].frameElement.contentWindow,
+            })
+            first_time_rendered = false
+            
+            // 初始化图书阅读器功能（包括高亮列表等）
+            if (typeof initBookReader === 'function') {
+                console.log("初始化图书阅读器功能");
+                initBookReader();
+            } else {
+                console.warn("initBookReader函数未找到，使用简单初始化");
+                // 初始化文本选择监听器
+                if (typeof window.monitorTextSelection === 'function') {
+                    console.log("初始化文本选择监听器");
+                    window.monitorTextSelection();
+                } else {
+                    console.error("文本选择监听器函数未找到");
+                }
+            }
         }
+        
+        // 保存当前章节索引，方便高亮功能使用
+        if (section && section.index !== undefined) {
+            // 确保book_rendition已定义后再设置属性
+            if (window.book_rendition) {
+                window.book_rendition.currentChapterIndex = section.index;
+                console.log("当前章节索引:", section.index);
+            } else {
+                console.warn("book_rendition未定义，无法设置currentChapterIndex");
+            }
+        }
+        
+        // 重新注册键盘事件，确保快捷键在翻页后仍然有效
+        if (typeof setupIframeKeyboardShortcuts === 'function') {
+            console.log("重新注册键盘事件");
+            setupIframeKeyboardShortcuts();
+        } else if (window.setupIframeKeyboardShortcuts) {
+            console.log("重新注册键盘事件(全局)");
+            window.setupIframeKeyboardShortcuts();
+        }
+        
+        // 延迟一点时间确保页面完全渲染后再加载高亮
+        setTimeout(function() {
+            // 加载高亮数据 - 每次页面渲染时都重新加载，确保切换页面时高亮仍然可见
+            if (typeof window.loadHighlights === 'function') {
+                console.log("加载高亮数据");
+                window.loadHighlights();
+            } else {
+                console.error("加载高亮函数未找到");
+            }
+        }, 100);
+        
         // Add iframe click event to close all navbar popups
         var iframe = $('iframe').contents();
         iframe.find('body').on('click', function () {
             $('.book-navbar-popup').hide();
             $('#book-action-menu').hide();
         });
-        // Add main color selection background 
-        iframe.find('head').append("<style>::selection { background-color: #E3B230;}</style>");
-		// Spawn action menu on right click if something selected
+        // Add main color selection background and highlight style
+        iframe.find('head').append(`
+            <style>
+                ::selection { background-color: #E3B230; }
+                
+                /* 自定义高亮样式 */
+                .highlight-text {
+                    background-color: #FFEB3B !important; /* 亮黄色 */
+                    opacity: 1 !important; /* 改为不透明 */
+                    color: inherit !important; /* 继承原始文本颜色 */
+                    font-weight: inherit !important; /* 继承原始字体粗细 */
+                    text-shadow: inherit !important; /* 继承原始文本阴影 */
+                    border-radius: 2px;
+                    padding: 0 1px;
+                    box-shadow: 0 0 0 1px rgba(255, 235, 59, 0.5); /* 添加细微边框 */
+                }
+                
+                /* 确保高亮背景半透明，而不是文本本身 */
+                .highlight-text {
+                    position: relative;
+                    z-index: 1;
+                }
+                
+                .highlight-text::before {
+                    content: "";
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background-color: #FFEB3B;
+                    opacity: 0.35;
+                    z-index: -1;
+                    border-radius: 2px;
+                }
+            </style>
+        `);
+        // Spawn action menu on right click if something selected
         iframe.on('contextmenu', function (e) {
             const somethingSelected = $('iframe')[0].contentWindow.getSelection().toString().trim().length > 0
             if(somethingSelected) {
@@ -137,7 +265,7 @@ var loadBook = async function(styleSettings = null) {
         // Update save button
         updateSavePagesButton(book_saved_pages, start_cfi);
 
-		// Update global variable with current section href
+        // Update global variable with current section href
         current_section_href = section.href;
     })
 
@@ -283,6 +411,11 @@ function getAudioFromPhonetics(phonetics){
 
 }
 function spawnActionMenu(e) {
+    // 确保高亮按钮已添加到菜单
+    if (typeof window.addHighlightButtonToMenu === 'function') {
+        window.addHighlightButtonToMenu();
+    }
+    
     var horizontalPadding = $(window).width() - $('#book-content-columns-wrapper').width()
     var hasOverflowedX = (e.pageX % $('#book-content-columns-wrapper').width() + horizontalPadding + $('#book-action-menu').width()) > $(window).width();
     var x = hasOverflowedX ? (e.pageX % $('#book-content-columns-wrapper').width()) - $('#book-action-menu').width() + 'px' : e.pageX % $('#book-content-columns-wrapper').width() + 'px';
@@ -605,6 +738,53 @@ var getCurrentChapterLabelByHref = async function(navigationToc,chapterHref){
         }
     }
     return chapter_title;
+}
+
+// 监听文本选择事件
+const handleTextSelection = () => {
+  const iframe = document.querySelector("#viewer iframe");
+  if (!iframe) return;
+  
+  const iframeDoc = iframe.contentDocument;
+  if (!iframeDoc) return;
+  
+  iframeDoc.addEventListener("mouseup", (event) => {
+    const selection = iframeDoc.getSelection();
+    if (selection && !selection.isCollapsed) {
+      const selectedText = selection.toString().trim();
+      console.log(selectedText);
+      if (selectedText) {
+        // 获取选中文本的范围
+        const range = selection.getRangeAt(0);
+        console.log(range);
+        // 生成 CFI
+        const cfiRange = window.reader.rendition.manager.current.content.cfiFromRange(range);
+        
+        // 显示高亮菜单
+        showHighlightMenu(event, selectedText, cfiRange);
+      }
+    }
+  });
+};
+
+// 初始化图书阅读器功能
+function initBookReader() {
+    console.log("正在初始化图书阅读器功能...");
+    
+    // 初始化文本选择和高亮功能
+    if (typeof window.initContextMenu === 'function') {
+        window.initContextMenu();
+    } else {
+        console.warn("找不到initContextMenu函数，将使用旧的初始化方式");
+        if (typeof window.addHighlightButtonToMenu === 'function') {
+            window.addHighlightButtonToMenu();
+        }
+        if (typeof window.monitorTextSelection === 'function') {
+            window.monitorTextSelection();
+        }
+    }
+    
+    console.log("图书阅读器功能初始化完成");
 }
 
 
