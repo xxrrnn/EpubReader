@@ -4,7 +4,7 @@ const fse = require('fs-extra');
 const Vibrant = require('node-vibrant');
 const Epub = require("epub2").EPub;
 const path = require('path');
-const convert = require('ebook-convert')
+const convert = require('ebook-convert');
 
 // Define allowed extensions for books
 const allowedExtensions = ['epub','pdf','mobi'];
@@ -327,3 +327,70 @@ contextBridge.exposeInMainWorld('appConfig', {
         return await ipcRenderer.invoke(eventName, ...params)
     },
 });
+
+// 暴露Cambridge词典API给渲染进程
+contextBridge.exposeInMainWorld('cambridgeAPI', {
+    getWordInfo: async (word) => {
+        console.log('请求Cambridge词典查询:', word);
+        return await ipcRenderer.invoke('get-cambridge-word-info', word);
+    },
+    formatWordInfo: (wordInfo) => {
+        if (!wordInfo || !wordInfo.partOfSpeech || wordInfo.partOfSpeech.length === 0) {
+            return '未找到单词信息';
+        }
+        
+        let result = '';
+        
+        wordInfo.partOfSpeech.forEach(pos => {
+            if (pos.wordPrototype) {
+                result += `📝 ${pos.wordPrototype} ${pos.type ? `(${pos.type})` : ''}\n`;
+            }
+            
+            // 添加发音信息
+            if (pos.pronunciationUK.phonetic) {
+                result += `🇬🇧 ${pos.pronunciationUK.phonetic}\n`;
+            }
+            
+            if (pos.pronunciationUS.phonetic) {
+                result += `🇺🇸 ${pos.pronunciationUS.phonetic}\n`;
+            }
+            
+            // 添加释义
+            if (pos.definitions && pos.definitions.length > 0) {
+                result += '\n📚 释义：\n';
+                pos.definitions.forEach((def, idx) => {
+                    result += `${idx + 1}. ${def.enMeaning}\n`;
+                    if (def.chMeaning) {
+                        result += `   ${def.chMeaning}\n`;
+                    }
+                });
+            }
+            
+            // 添加短语
+            if (pos.phrases && pos.phrases.length > 0) {
+                result += '\n🔍 常用短语：\n';
+                pos.phrases.forEach((phrase, idx) => {
+                    result += `${idx + 1}. ${phrase}`;
+                    if (pos.phraseDefinitions[idx]) {
+                        result += ` - ${pos.phraseDefinitions[idx].enMeaning}`;
+                        if (pos.phraseDefinitions[idx].chMeaning) {
+                            result += ` (${pos.phraseDefinitions[idx].chMeaning})`;
+                        }
+                    }
+                    result += '\n';
+                });
+            }
+            
+            result += '\n';
+        });
+        
+        // 添加链接
+        if (wordInfo.wordUrl) {
+            result += `🔗 ${wordInfo.wordUrl}\n`;
+        }
+        
+        return result;
+    }
+});
+
+

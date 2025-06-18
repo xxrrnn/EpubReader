@@ -89,6 +89,7 @@
     }
   },
   "dependencies": {
+    "cheerio": "^1.0.0-rc.12",
     "dominant-color": "^0.0.1",
     "ebook-convert": "^2.0.1",
     "electron-squirrel-startup": "^1.0.0",

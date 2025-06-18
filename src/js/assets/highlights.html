@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>高亮管理</title>
+  <link rel="stylesheet" href="../assets/css/highlights.css">
+  <link rel="stylesheet" href="../assets/css/common.css">
+  <script src="../js/highlights/highlights.js" defer></script>
+  <script src="../js/highlights/editableTable.js" defer></script>
+</head>
+<body class="flex flex-col h-screen bg-gray-100 dark:bg-gray-900">
+  <!-- 标题栏 -->
+  <div class="app-titlebar flex justify-between items-center p-2 bg-white dark:bg-gray-800 shadow-md">
+    <div class="flex items-center">
+      <button id="back-to-library" class="flex items-center justify-center w-8 h-8 rounded hover:bg-gray-200 dark:hover:bg-gray-700">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+          <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" />
+        </svg>
+      </button>
+      <h1 class="ml-2 text-lg font-semibold dark:text-white">高亮管理</h1>
+    </div>
+    <div class="window-controls flex">
+      <div id="minimize-app-icon" class="window-control-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+      </div>
+      <div id="close-app-icon" class="window-control-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- 主内容区 -->
+  <div id="highlights-container" class="flex-1 flex flex-col h-full overflow-hidden">
+    <!-- 表格容器 -->
+    <div id="highlights-table-wrapper" class="flex-1 flex flex-col overflow-hidden bg-white dark:bg-gray-800 shadow-md rounded-md m-4"></div>
+  </div>
+</body>
+</html> 

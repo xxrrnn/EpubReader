@@ -156,10 +156,20 @@ window.highlightSelectedText = function() {
       // 获取当前章节索引
       let chapterIndex = -1;
       let chapterHref = '';
+      let chapterTitle = '';
       if (window.book_rendition) {
         chapterIndex = window.book_rendition.currentChapterIndex || -1;
         if (window.book_rendition.location && window.book_rendition.location.start) {
           chapterHref = window.book_rendition.location.start.href || '';
+        }
+        // 尝试获取章节标题
+        if (contextInfo && contextInfo.chapterTitle) {
+          chapterTitle = contextInfo.chapterTitle;
+        } else if (window.book_chapterTitle) {
+          chapterTitle = window.book_chapterTitle;
+        } else {
+          // 尝试从页面中获取标题
+          chapterTitle = getArticleTitle() || '';
         }
       }
       
@@ -167,145 +177,207 @@ window.highlightSelectedText = function() {
       const highlightId = 'highlight-' + new Date().getTime();
       
       // 如果没有有效的range或无法获取CFI，使用章节信息和文本内容创建一个伪CFI
-      let highlightData = null;
-      let pseudoCfi = null;
+      let cfiData = null;
       
       // 尝试获取真实CFI
-      let cfiRange = null;
       if (range && window.book_rendition && window.book_rendition.manager && 
           window.book_rendition.manager.current && window.book_rendition.manager.current.content) {
         try {
-          cfiRange = window.book_rendition.manager.current.content.cfiFromRange(range);
+          const cfiRange = window.book_rendition.manager.current.content.cfiFromRange(range);
           console.log("生成的CFI:", cfiRange);
-          
-          // 存储精确的epubCfi用于定位
-          const epubCfi = cfiRange;
-          
-          // 获取完整的article信息
-          let articleInfo = '';
-          
-          // 优先使用从页面中获取的标题（calibre10 class的h1元素）
-          const pageTitle = getArticleTitle();
-          if (pageTitle) {
-            articleInfo = pageTitle;
-          }
-          // 回退到其他方法
-          else if (bookInfo && bookInfo.article && bookInfo.article !== '未知文章') {
-            articleInfo = bookInfo.article;
-          } 
-          else if (iframe && iframe.contentDocument && iframe.contentDocument.title) {
-            articleInfo = iframe.contentDocument.title;
-          }
-          else if (contextInfo && contextInfo.nearbyHeadings && contextInfo.nearbyHeadings.length > 0) {
-            articleInfo = contextInfo.nearbyHeadings[0].text;
-          }
-          else if (window.book_chapterTitle) {
-            articleInfo = window.book_chapterTitle;
-          }
-          else {
-            const now = new Date();
-            articleInfo = `高亮于 ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`;
-          }
-          
-
-          
-          // 使用真实CFI创建高亮数据
-          highlightData = {
-            id: highlightId,
-            cfi: cfiRange,
-            epubCfi: epubCfi, // 添加精确的CFI用于定位
-            type: getHighlightType(selection_text),
-            text: selection_text,
-            sentence: sentence || selection_text,
-            chapter: contextInfo ? contextInfo.chapterTitle : '',
-            article: articleInfo, // 添加文章信息
-            bookInfo: bookInfo, // 保存完整的书籍信息
-            timestamp: new Date().getTime(),
-            created: new Date().toISOString()
-          };
+          cfiData = cfiRange;
         } catch (e) {
           console.error("生成CFI失败:", e);
         }
       }
       
       // 如果无法获取真实CFI，创建伪CFI
-      if (!highlightData) {
-        pseudoCfi = JSON.stringify({
+      if (!cfiData) {
+        cfiData = JSON.stringify({
           chapterIndex: chapterIndex,
           chapterHref: chapterHref,
           text: selection_text,
           timestamp: new Date().getTime()
         });
-        
-        console.log("生成伪CFI:", pseudoCfi);
-        
-        // 使用伪CFI创建高亮数据
-        highlightData = {
-          id: highlightId,
-          cfi: pseudoCfi,
-          type: getHighlightType(selection_text),
-          text: selection_text,
-          sentence: sentence || selection_text,
-          chapter: contextInfo ? contextInfo.chapterTitle : '',
-          bookInfo: bookInfo, // 保存完整的书籍信息
-          article: getArticleTitle() || (bookInfo ? bookInfo.article : ''), // 优先使用页面中的标题
-          timestamp: new Date().getTime(),
-          created: new Date().toISOString(),
-          spinePosition: chapterIndex
-        };
+        console.log("生成伪CFI:", cfiData);
       }
+      
+      // 获取书籍Key
+      const bookKey = getBookKey();
+      if (!bookKey) {
+        console.error("无法获取书籍Key，无法保存高亮");
+        return;
+      }
+      
+      // 使用highlightTemplate创建高亮数据
+      const highlightData = window.highlightTemplate.createHighlight({
+        id: highlightId,
+        bookKey: bookKey,
+        bookTitle: bookInfo?.title || '',
+        cfi: cfiData,
+        text: selection_text,
+        chapter: chapterTitle,
+        chapterIndex: chapterIndex,
+        color: '#ffeb3b', // 默认黄色高亮
+        type: getHighlightType(selection_text),
+        note: '',
+        timestamp: Date.now(),
+        tags: []
+      });
       
       console.log("高亮数据:", highlightData);
       
-      // 保存高亮数据
+      // 添加到高亮列表并保存
       window.highlights = window.highlights || [];
       window.highlights.push(highlightData);
+      
+      // 立即保存高亮数据到本地存储
+      window.highlightTemplate.manager.saveHighlight(highlightData);
+      
+      // 同时保存到旧的存储方式，确保兼容性
       saveHighlights();
       
-      // 立即渲染高亮
-      try {
-        const iframe = document.querySelector('iframe');
-        if (iframe && iframe.contentDocument && range) {
-          // 手动添加高亮 - 仅保留成功的方法
-          let highlightAdded = false;
+      // 高亮成功的视觉反馈
+      let highlightAdded = false;
+      
+      // 直接在iframe中添加高亮样式
+      if (range && iframe && iframe.contentDocument) {
+        try {
+          // 创建一个新的高亮span元素
+          const highlightSpan = document.createElement('span');
+          highlightSpan.className = 'highlight-text';
+          highlightSpan.dataset.id = highlightData.id;
+          highlightSpan.style.backgroundColor = highlightData.color;
+          highlightSpan.textContent = selection_text; // 直接设置文本内容
           
-          try {
-            // 手动添加高亮样式
-            const highlightSpan = document.createElement('span');
-            highlightSpan.className = 'highlight-text';
-            highlightSpan.dataset.id = highlightData.id;
+          // 获取范围的起始和结束位置
+          const startNode = range.startContainer;
+          const startOffset = range.startOffset;
+          const endNode = range.endContainer;
+          const endOffset = range.endOffset;
+          
+          // 如果起始和结束节点相同，并且是文本节点
+          if (startNode === endNode && startNode.nodeType === Node.TEXT_NODE) {
+            const text = startNode.nodeValue;
             
-            // 将选中内容包装在span中
-            range.surroundContents(highlightSpan);
+            // 创建前半部分文本节点（如果需要）
+            if (startOffset > 0) {
+              const beforeText = document.createTextNode(text.substring(0, startOffset));
+              startNode.parentNode.insertBefore(beforeText, startNode);
+            }
+            
+            // 插入高亮span
+            startNode.parentNode.insertBefore(highlightSpan, startNode);
+            
+            // 创建后半部分文本节点（如果需要）
+            if (endOffset < text.length) {
+              const afterText = document.createTextNode(text.substring(endOffset));
+              startNode.parentNode.insertBefore(afterText, startNode);
+            }
+            
+            // 移除原始文本节点
+            startNode.parentNode.removeChild(startNode);
             
             highlightAdded = true;
-            console.log("手动添加高亮成功");
-          } catch (e) {
-            console.error("手动添加高亮失败:", e);
+            console.log("已添加高亮样式 - 简单情况");
+          } else {
+            // 复杂情况：选择跨越多个节点
+            console.log("复杂选择情况，使用替代方法");
+            
+            // 替代方法：使用原始选中的文本替换掉整个选择范围
+            try {
+              // 删除原始范围内容
+              range.deleteContents();
+              
+              // 在原位置插入带有高亮的内容
+              range.insertNode(highlightSpan);
+              
+              highlightAdded = true;
+              console.log("已添加高亮样式 - 复杂情况");
+            } catch (e) {
+              console.error("添加高亮样式失败 (复杂情况):", e);
+            }
           }
           
-          if (highlightAdded) {
-            // 隐藏右键菜单
-            $('#book-action-menu').hide();
-            
-            // 成功高亮
-          } else {
-            // 如果手动添加失败，尝试重新渲染所有高亮
-            renderHighlights();
+          // 清除选择，避免影响后续操作
+          if (iframe.contentWindow && iframe.contentWindow.getSelection) {
+            iframe.contentWindow.getSelection().removeAllRanges();
           }
-        } else {
-          renderHighlights();
+          
+          // 全局跟踪高亮元素
+          if (!window.highlightElements) {
+            window.highlightElements = {};
+          }
+          window.highlightElements[highlightData.id] = highlightSpan;
+          
+          // 添加事件处理器，当点击高亮时可以查看详细信息
+          highlightSpan.addEventListener('click', (e) => {
+            e.stopPropagation(); // 防止事件冒泡
+            console.log(`点击了高亮: ${highlightData.id}`);
+            // 这里可以显示一个弹出窗口显示高亮信息
+          });
+        } catch (e) {
+          console.error("添加高亮样式失败:", e);
         }
-      } catch (e) {
-        console.error("添加高亮时出错:", e);
-        // 即使出错也尝试重新渲染
-        renderHighlights();
       }
+      
+      if (highlightAdded) {
+        displayAlert("高亮已添加", "success");
+        
+        // 不调用renderHighlights，因为它可能会导致高亮消失
+        // 我们已经手动添加了高亮元素到DOM中
+        
+        // 如果是单词类型，调用Cambridge词典爬虫
+        if (highlightData.type === 'word') {
+          // 确保只处理单个单词，移除空格和标点，只保留字母
+          const word = selection_text.trim().toLowerCase().replace(/[^a-z]/gi, '');
+          
+          if (word.length === 0) {
+            console.log("处理后的单词为空，跳过词典查询");
+            return highlightData;
+          }
+          
+          console.log("尝试查询Cambridge词典:", word);
+          
+          // 检查是否存在Cambridge词典API
+          if (window.cambridgeDict && window.cambridgeDict.getWordInfo) {
+            // 异步获取词典信息，但不影响高亮显示
+            setTimeout(async () => {
+              try {
+                const wordInfo = await window.cambridgeDict.getWordInfo(word);
+                if (wordInfo) {
+                  const formattedInfo = window.cambridgeDict.formatWordInfo(wordInfo);
+                  console.log("Cambridge词典查询结果:");
+                  console.log(formattedInfo);
+                  
+                  // 存储词典信息到高亮对象中
+                  highlightData.dictionaryInfo = {
+                    source: 'cambridge',
+                    wordInfo: wordInfo,
+                    timestamp: Date.now()
+                  };
+                  
+                  // 更新高亮数据，但不重新渲染
+                  window.highlightTemplate.manager.updateHighlight(highlightData);
+                }
+              } catch (error) {
+                console.error("Cambridge词典查询失败:", error);
+              }
+            }, 100); // 延迟100毫秒，确保高亮已经完成
+          }
+        }
+        
+        return highlightData;
+      }
+      
+      // 对于未成功添加高亮的情况，返回失败而不调用renderHighlights
+      console.log("未能成功添加高亮");
+      return null; // 返回null表示高亮添加失败
     } catch (e) {
-      console.error("获取CFI或添加高亮时出错:", e);
+      console.error("生成高亮数据失败:", e);
     }
   } catch (e) {
-    console.error("高亮文本时出错:", e);
+    console.error("高亮选中文本时出错:", e);
   }
 };
 
@@ -1083,7 +1155,7 @@ function saveHighlights() {
     } else if (window.location.search) {
       // 从URL获取
       const searchParams = new URLSearchParams(window.location.search);
-      const bookId = searchParams.get('book');
+      const bookId = searchParams.get('code');
       if (bookId) {
         bookKey = bookId;
         console.log("通过URL参数获取书籍ID:", bookKey);
@@ -1095,11 +1167,24 @@ function saveHighlights() {
       return;
     }
     
-    // 保存到localStorage
-    const storageKey = `${bookKey}-highlights`;
-    localStorage.setItem(storageKey, JSON.stringify(window.highlights));
+    // 确保每个高亮都有bookKey属性
+    window.highlights = window.highlights.map(highlight => {
+      if (!highlight.bookKey) {
+        highlight.bookKey = bookKey;
+      }
+      // 如果书籍标题不存在，尝试获取
+      if (!highlight.bookTitle) {
+        highlight.bookTitle = extractBookInfo().title || '';
+      }
+      return highlight;
+    });
     
-    console.log("高亮数据已保存到", storageKey, "，当前共有", window.highlights.length, "个高亮");
+    // 使用highlightTemplate的管理器保存所有高亮
+    window.highlights.forEach(highlight => {
+      window.highlightTemplate.manager.saveHighlight(highlight);
+    });
+    
+    console.log("高亮数据已保存，当前共有", window.highlights.length, "个高亮");
   } catch (e) {
     console.error("保存高亮数据时出错:", e);
   }
@@ -1122,7 +1207,7 @@ window.loadHighlights = function() {
     } else if (window.location.search) {
       // 从URL获取
       const searchParams = new URLSearchParams(window.location.search);
-      const bookId = searchParams.get('book');
+      const bookId = searchParams.get('code');
       if (bookId) {
         bookKey = bookId;
         console.log("通过URL参数获取书籍ID:", bookKey);
@@ -1136,25 +1221,12 @@ window.loadHighlights = function() {
     
     console.log("使用bookKey:", bookKey);
     
-    // 从localStorage获取高亮数据
-    const storageKey = `${bookKey}-highlights`;
-    const savedHighlights = localStorage.getItem(storageKey);
+    // 使用highlightTemplate的管理器获取高亮数据
+    window.highlights = window.highlightTemplate.manager.getHighlights(bookKey);
+    console.log("已加载", window.highlights.length, "个高亮");
     
-    if (savedHighlights) {
-      try {
-        window.highlights = JSON.parse(savedHighlights);
-        console.log("已加载", window.highlights.length, "个高亮从", storageKey);
-        
-        // 渲染所有高亮
-        renderHighlights();
-      } catch (e) {
-        console.error("解析保存的高亮数据失败:", e);
-        window.highlights = [];
-      }
-    } else {
-      console.log("没有找到保存的高亮数据");
-      window.highlights = [];
-    }
+    // 渲染所有高亮
+    renderHighlights();
   } catch (e) {
     console.error("加载高亮数据时出错:", e);
     window.highlights = [];
@@ -1171,24 +1243,27 @@ function renderHighlights() {
     return;
   }
   
-  // 手动清除现有高亮
+  // 创建一个Map来跟踪所有已经在页面上的高亮元素
+  const existingHighlights = new Map();
+  
   try {
     const iframe = document.querySelector('iframe');
     if (iframe && iframe.contentDocument) {
-      const highlights = iframe.contentDocument.querySelectorAll('.highlight-text');
-      highlights.forEach(el => el.remove());
-      console.log("手动清除高亮成功，移除了", highlights.length, "个高亮");
+      // 获取当前页面上所有高亮元素并记录它们
+      const highlightElements = iframe.contentDocument.querySelectorAll('.highlight-text');
+      highlightElements.forEach(el => {
+        if (el.dataset.id) {
+          existingHighlights.set(el.dataset.id, el);
+        }
+      });
+      
+      console.log(`页面上已有${existingHighlights.size}个高亮元素`);
     }
-    
-    // 也尝试通过rendition的annotations API清除高亮
-    // if (window.book_rendition.annotations && typeof window.book_rendition.annotations.clear === 'function') {
-    //   window.book_rendition.annotations.clear();
-    //   console.log("通过annotations API清除高亮成功");
-    // }
   } catch (e) {
-    console.error("清除高亮失败:", e);
-    return;
+    console.error("获取现有高亮元素失败:", e);
   }
+  
+  // 不再清除现有的高亮元素，保留所有已经添加的高亮
   
   // 获取当前章节信息，用于过滤高亮
   const currentChapterIndex = window.book_rendition.currentChapterIndex;
@@ -1222,6 +1297,12 @@ function renderHighlights() {
   // 处理JSON结构的高亮
   function handleJsonHighlight(highlight, currentChapterIndex, currentHref) {
     try {
+      // 如果这个高亮已经在页面上显示了，就不要再处理它
+      if (existingHighlights.has(highlight.id)) {
+        console.log(`高亮 ${highlight.id} 已在页面上存在，跳过渲染`);
+        return;
+      }
+      
       const position = JSON.parse(highlight.cfi);
       
       // 检查章节是否匹配
@@ -1274,11 +1355,53 @@ function renderHighlights() {
               const span = iframe.contentDocument.createElement('span');
               span.className = 'highlight-text';
               span.dataset.id = highlight.id;
+              span.style.backgroundColor = highlight.color || '#ffeb3b';
+              span.textContent = position.text; // 直接设置文本内容，避免使用surroundContents
               
               try {
-                range.surroundContents(span);
+                // 保存文本节点的下一个兄弟节点（如果有的话）
+                const nextSibling = textNode.nextSibling;
+                
+                // 将文本节点分割为三部分：前部分，高亮文本，后部分
+                if (index > 0) {
+                  // 保留前面部分
+                  textNode.nodeValue = text.substring(0, index);
+                  
+                  // 插入高亮元素
+                  if (nextSibling) {
+                    textNode.parentNode.insertBefore(span, nextSibling);
+                  } else {
+                    textNode.parentNode.appendChild(span);
+                  }
+                  
+                  // 如果有后面部分，创建一个新的文本节点
+                  if (index + position.text.length < text.length) {
+                    const afterText = document.createTextNode(
+                      text.substring(index + position.text.length)
+                    );
+                    textNode.parentNode.insertBefore(afterText, span.nextSibling);
+                  }
+                } else {
+                  // 将原始节点替换为高亮元素
+                  textNode.parentNode.insertBefore(span, textNode);
+                  
+                  // 如果有后面部分，创建一个新的文本节点
+                  if (position.text.length < text.length) {
+                    const afterText = document.createTextNode(
+                      text.substring(position.text.length)
+                    );
+                    textNode.parentNode.insertBefore(afterText, span.nextSibling);
+                  }
+                  
+                  // 移除原始文本节点
+                  textNode.parentNode.removeChild(textNode);
+                }
+                
                 addedCount++;
                 console.log("手动添加高亮成功:", highlight.id);
+                
+                // 记录这个高亮元素，下次不要重复添加
+                existingHighlights.set(highlight.id, span);
               } catch (e) {
                 console.error("创建高亮元素失败:", e);
               }
@@ -1294,6 +1417,12 @@ function renderHighlights() {
   // 处理CFI字符串格式的高亮
   function handleCfiHighlight(highlight) {
     try {
+      // 如果这个高亮已经在页面上显示了，就不要再处理它
+      if (existingHighlights.has(highlight.id)) {
+        console.log(`高亮 ${highlight.id} 已在页面上存在，跳过渲染`);
+        return;
+      }
+      
       // 使用rendition的annotations API添加高亮
       if (window.book_rendition.annotations && typeof window.book_rendition.annotations.add === 'function') {
         // 检测高亮类型
@@ -1304,21 +1433,45 @@ function renderHighlights() {
         const fillColor = highlightType === 'word' ? 'yellow' : 
                         (highlightType === 'sentence' ? '#8eff52' : 'orange');
         
-        // 添加高亮
-        window.book_rendition.annotations.add(
-          'highlight', 
-          highlight.cfi, 
-          { id: highlight.id }, 
-          null, 
-          className, 
-          {
-            'fill': fillColor,
-            'fill-opacity': '0.4'
-          }
-        );
-        
-        addedCount++;
-        console.log("通过annotations API添加高亮成功:", highlight.id);
+        try {
+          // 添加高亮
+          window.book_rendition.annotations.add(
+            'highlight', 
+            highlight.cfi, 
+            { id: highlight.id }, 
+            null, 
+            className, 
+            {
+              'fill': fillColor,
+              'fill-opacity': '0.4'
+            }
+          );
+          
+          // 尝试获取添加到DOM中的高亮元素
+          setTimeout(() => {
+            try {
+              const iframe = document.querySelector('iframe');
+              if (iframe && iframe.contentDocument) {
+                const allHighlights = iframe.contentDocument.querySelectorAll('.epubjs-hl');
+                // 查找刚添加的高亮元素（最后一个）
+                if (allHighlights.length > 0) {
+                  const newHighlight = allHighlights[allHighlights.length - 1];
+                  // 添加ID以便以后能找到它
+                  newHighlight.dataset.id = highlight.id;
+                  // 记录到existingHighlights中
+                  existingHighlights.set(highlight.id, newHighlight);
+                }
+              }
+            } catch (err) {
+              console.error("获取已添加的高亮元素失败:", err);
+            }
+          }, 100);
+          
+          addedCount++;
+          console.log("通过annotations API添加高亮成功:", highlight.id);
+        } catch (err) {
+          console.error("通过annotations API添加高亮失败:", err);
+        }
       } else {
         console.error("annotations API不可用，无法添加高亮");
       }
@@ -2169,26 +2322,28 @@ window.removeHighlight = function(highlightId) {
 };
 
 // 删除选中文本的高亮
-window.deleteSelectedHighlight = function() {
-  console.log("删除选中文本的高亮");
+window.deleteSelectedHighlight = function(highlightId) {
+  if (!highlightId) return false;
   
-  try {
-    // 检查选中文本是否已被高亮
-    const highlightInfo = window.checkSelectedTextHighlighted();
-    console.log("高亮状态:", highlightInfo);
-    
-    if (highlightInfo.isHighlighted) {
-      // 删除高亮
-      window.removeHighlight(highlightInfo.highlightId);
-      return true;
-    } else {
-      console.log("选中的文本未被高亮");
-      return false;
-    }
-  } catch (e) {
-    console.error("删除高亮失败:", e);
+  const bookKey = getBookKey();
+  if (!bookKey) {
+    console.error("删除高亮失败：无法获取书籍Key");
     return false;
   }
+  
+  // 使用highlightTemplate的管理器删除高亮
+  const result = window.highlightTemplate.manager.deleteHighlight(bookKey, highlightId);
+  
+  if (result) {
+    // 更新窗口的高亮数组
+    window.highlights = window.highlights.filter(h => h.id !== highlightId);
+    
+    // 重新渲染高亮
+    renderHighlights();
+    return true;
+  }
+  
+  return false;
 };
 
 // 高亮iframe中匹配的文本 - 这个函数已不再使用，保留代码供参考
@@ -2453,4 +2608,23 @@ if (window.book_rendition) {
       window.initVerticalMode();
     }, 500);
   });
+}
+
+// 获取书籍Key的辅助函数
+function getBookKey() {
+  let bookKey = null;
+  
+  if (window.book_epub && typeof window.book_epub.key === 'function') {
+    bookKey = window.book_epub.key();
+  } else if (window.epubCodeSearch) {
+    bookKey = window.epubCodeSearch;
+  } else if (window.location.search) {
+    const searchParams = new URLSearchParams(window.location.search);
+    const bookId = searchParams.get('code');
+    if (bookId) {
+      bookKey = bookId;
+    }
+  }
+  
+  return bookKey;
 }

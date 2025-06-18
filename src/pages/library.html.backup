@@ -199,7 +199,6 @@
                         </div>
                     </div>
                     <button id="sorting-apply-btn" class="primary-button bg-black">Apply changes</button>
-                    <button id="highlights-manager-btn" class="primary-button bg-black mt-4">管理高亮</button>
                 </div>
             </div>
             <div id="books-section" class="flex flex-col pt-7 px-7 relative flex-1 overflow-hidden">

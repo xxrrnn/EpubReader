@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="cache-control" content="no-cache" />
+    <link rel="stylesheet" href="../assets/css/main.css">
+    <link rel="stylesheet" href="../assets/css/library.css" />
+    <link rel="stylesheet" href="../assets/css/tailwindcss.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="https://code.jquery.com/jquery-3.6.1.slim.min.js" integrity="sha256-w8CvhFs7iHNVUtnSP0YKEg00p9Ih13rlL9zGqvLdePA=" crossorigin="anonymous"></script>
+    <script src="../js/general/navbarHandler.js"></script>
+    <script src="../js/book/highlightTemplate.js"></script>
+    <style>
+        /* 高亮管理页面样式 */
+        .highlights-container {
+            padding: 20px;
+            height: calc(100% - 80px);
+            overflow: auto;
+        }
+
+        .highlight-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .highlight-table th {
+            background-color: #f0f0f0;
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+            font-weight: 600;
+            color: #444;
+        }
+
+        .highlight-table td {
+            padding: 12px 16px;
+            border-bottom: 1px solid #e8e8e8;
+            vertical-align: top;
+        }
+
+        .highlight-table tbody tr:hover {
+            background-color: #f1f1f1;
+        }
+
+        .highlight-text {
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .highlight-color {
+            width: 24px;
+            height: 24px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn {
+            padding: 6px 10px;
+            border-radius: 4px;
+            border: none;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-edit {
+            background-color: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .btn-edit:hover {
+            background-color: #bbdefb;
+        }
+
+        .btn-delete {
+            background-color: #ffebee;
+            color: #d32f2f;
+        }
+
+        .btn-delete:hover {
+            background-color: #ffcdd2;
+        }
+
+        .search-bar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            align-items: center;
+        }
+
+        .search-input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .filter-dropdown {
+            padding: 8px 12px;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            background-color: white;
+        }
+
+        .highlight-editor {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .editor-content {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            width: 500px;
+            max-width: 90%;
+        }
+
+        .editor-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .editor-close {
+            cursor: pointer;
+            font-size: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 500;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .form-control-color {
+            height: 40px;
+            padding: 4px;
+            width: 60px;
+        }
+
+        .form-textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+
+        .btn-save {
+            background-color: #e8f5e9;
+            color: #2e7d32;
+            padding: 8px 16px;
+            font-weight: 500;
+        }
+
+        .btn-save:hover {
+            background-color: #c8e6c9;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #757575;
+        }
+
+        .book-filter {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1 id="alert-text" class="main-text font-semibold text-white alert-default"></h1>
+
+    <div class="flex flex-col h-full">
+        <div id="main-navbar" class="p-7 border-b-[.5px] border-[rgba(0,0,0,0.1)] flex justify-between items-center w-full select-none">
+            <div class="flex flex-row items-center gap-7 no-drag">
+                <a href="library.html" class="main-text text-color-black text-sb cursor-pointer text-decoration-none">返回书库</a>
+                <div class="vertical-divider-05 bg-black"></div>
+                <h1 class="main-text text-sb">高亮管理</h1>
+            </div>
+            <div class="flex flex-row items-center gap-4 no-drag">
+                <svg id="minimize-app-icon" class="stroke-black hover:stroke-black/70 cursor-pointer transition" width="20" height="20" viewBox="0 0 15 1" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <line x1="14.5" y1="0.5" x2="0.5" y2="0.499999" stroke-width="1.5" stroke-linecap="round" />
+                </svg>
+                <svg id="close-app-icon" class="stroke-black hover:stroke-[var(--primary-red-color)] cursor-pointer transition" width="20" height="20" viewBox="0 0 17 17" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <line x1="15.1422" y1="2.06066" x2="2.06067" y2="15.1421" stroke-width="1.5" stroke-linecap="round" />
+                    <line x1="14.7886" y1="15.1422" x2="1.70711" y2="2.06067" stroke-width="1.5" stroke-linecap="round" />
+                </svg>
+            </div>
+        </div>
+
+        <div class="highlights-container">
+            <div class="search-bar">
+                <input type="text" id="search-highlights" class="search-input" placeholder="搜索高亮内容...">
+                <select id="filter-type" class="filter-dropdown">
+                    <option value="">全部类型</option>
+                    <option value="word">单词</option>
+                    <option value="sentence">句子</option>
+                    <option value="paragraph">段落</option>
+                </select>
+            </div>
+
+            <div class="book-filter">
+                <label class="form-label">按文章筛选:</label>
+                <select id="filter-article" class="filter-dropdown">
+                    <option value="">全部文章</option>
+                </select>
+            </div>
+
+            <table class="highlight-table">
+                <thead>
+                    <tr>
+                        <th width="10%">单词</th>
+                        <th width="5%">类型</th>
+                        <th width="20%">文章标题</th>
+                        <th width="15%">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="highlights-table-body">
+                    <!-- 数据将由JavaScript动态加载 -->
+                </tbody>
+            </table>
+
+            <div id="empty-state" class="empty-state">
+                <p>没有找到高亮数据</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 高亮编辑弹窗 -->
+    <div class="highlight-editor" id="highlight-editor">
+        <div class="editor-content">
+            <div class="editor-header">
+                <h2>编辑高亮</h2>
+                <span class="editor-close">&times;</span>
+            </div>
+            <form id="edit-highlight-form">
+                <input type="hidden" id="edit-highlight-id">
+                <input type="hidden" id="edit-book-key">
+
+                <div class="form-group">
+                    <label class="form-label">标签</label>
+                    <input type="text" id="edit-highlight-tags" class="form-control" placeholder="用逗号分隔多个标签">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">笔记</label>
+                    <textarea id="edit-highlight-note" class="form-control form-textarea" placeholder="添加笔记..."></textarea>
+                </div>
+
+                <button type="submit" class="btn btn-save">保存修改</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        $(document).ready(async function() {
+            // 加载所有高亮
+            loadAllHighlights();
+            
+            // 搜索框事件
+            $('#search-highlights').on('input', filterHighlights);
+            
+            // 过滤器事件
+            $('#filter-type').change(filterHighlights);
+            $('#filter-article').change(filterHighlights);
+            
+            // 关闭编辑窗口
+            $('.editor-close').click(function() {
+                $('#highlight-editor').hide();
+            });
+            
+            // 提交编辑表单
+            $('#edit-highlight-form').submit(function(e) {
+                e.preventDefault();
+                saveHighlightEdit();
+            });
+            
+            // 最小化和关闭窗口按钮事件
+            $('#minimize-app-icon').click(function() {
+                window.appConfig.send('minimize-app');
+            });
+            
+            $('#close-app-icon').click(function() {
+                window.appConfig.send('close-app');
+            });
+        });
+        
+        // 加载所有高亮
+        function loadAllHighlights() {
+            try {
+                const allHighlights = window.highlightTemplate.manager.getAllHighlights();
+                
+                if (!allHighlights || allHighlights.length === 0) {
+                    $('#empty-state').show();
+                    $('.highlight-table').hide();
+                    return;
+                }
+                
+                $('#empty-state').hide();
+                $('.highlight-table').show();
+                
+                // 填充文章筛选下拉框
+                populateArticleFilter(allHighlights);
+                
+                // 渲染高亮表格
+                renderHighlightsTable(allHighlights);
+            } catch (error) {
+                console.error('加载高亮数据失败:', error);
+                displayAlert('加载高亮数据失败', 'default');
+            }
+        }
+        
+        // 填充文章筛选器
+        function populateArticleFilter(highlights) {
+            const articleSelect = $('#filter-article');
+            articleSelect.empty();
+            articleSelect.append('<option value="">全部文章</option>');
+            
+            // 提取唯一的文章
+            const articles = new Set();
+            highlights.forEach(h => {
+                let article = '';
+                if (h.article) {
+                    article = h.article;
+                } else if (h.chapter) {
+                    article = h.chapter;
+                }
+                
+                if (article && !articles.has(article)) {
+                    articles.add(article);
+                }
+            });
+            
+            // 添加到下拉框
+            Array.from(articles).sort().forEach(article => {
+                articleSelect.append(`<option value="${article}">${article}</option>`);
+            });
+        }
+        
+        // 渲染高亮表格
+        function renderHighlightsTable(highlights) {
+            const tableBody = $('#highlights-table-body');
+            tableBody.empty();
+            
+            highlights.forEach(highlight => {
+                const highlightTypeText = getHighlightTypeName(highlight.type);
+                
+                // 提取文章标题
+                let articleTitle = '未知文章';
+                if (highlight.article) {
+                    articleTitle = highlight.article;
+                } else if (highlight.chapter) {
+                    articleTitle = highlight.chapter;
+                }
+                
+                const row = `
+                    <tr data-id="${highlight.id}" data-book-key="${highlight.bookKey}">
+                        <td class="highlight-text" title="${highlight.text}">${highlight.text}</td>
+                        <td>${highlightTypeText}</td>
+                        <td>${articleTitle}</td>
+                        <td class="action-buttons">
+                            <button class="btn btn-edit" onclick="editHighlight('${highlight.id}', '${highlight.bookKey}')">编辑</button>
+                            <button class="btn btn-delete" onclick="deleteHighlight('${highlight.id}', '${highlight.bookKey}')">删除</button>
+                        </td>
+                    </tr>
+                `;
+                
+                tableBody.append(row);
+            });
+        }
+        
+        // 过滤高亮
+        function filterHighlights() {
+            const searchText = $('#search-highlights').val().toLowerCase();
+            const typeFilter = $('#filter-type').val();
+            const articleFilter = $('#filter-article').val();
+            
+            try {
+                // 获取所有高亮
+                const allHighlights = window.highlightTemplate.manager.getAllHighlights();
+                
+                // 应用过滤条件
+                let filteredHighlights = allHighlights;
+                
+                if (searchText) {
+                    filteredHighlights = filteredHighlights.filter(h => 
+                        h.text && h.text.toLowerCase().includes(searchText) ||
+                        h.note && h.note.toLowerCase().includes(searchText)
+                    );
+                }
+                
+                if (typeFilter) {
+                    filteredHighlights = filteredHighlights.filter(h => h.type === typeFilter);
+                }
+                
+                if (articleFilter) {
+                    filteredHighlights = filteredHighlights.filter(h => {
+                        let article = '';
+                        if (h.article) {
+                            article = h.article;
+                        } else if (h.chapter) {
+                            article = h.chapter;
+                        }
+                        return article === articleFilter;
+                    });
+                }
+                
+                // 渲染过滤后的高亮
+                renderHighlightsTable(filteredHighlights);
+                
+                if (filteredHighlights.length === 0) {
+                    $('#empty-state').show();
+                    $('.highlight-table').hide();
+                } else {
+                    $('#empty-state').hide();
+                    $('.highlight-table').show();
+                }
+            } catch (error) {
+                console.error('过滤高亮时出错:', error);
+            }
+        }
+        
+        // 获取高亮类型名称
+        function getHighlightTypeName(type) {
+            switch(type) {
+                case 'word': return '单词';
+                case 'sentence': return '句子';
+                case 'paragraph': return '段落';
+                default: return '未知';
+            }
+        }
+        
+        // 编辑高亮
+        function editHighlight(id, bookKey) {
+            try {
+                const highlights = window.highlightTemplate.manager.getHighlights(bookKey);
+                const highlight = highlights.find(h => h.id === id);
+                
+                if (!highlight) {
+                    console.error('未找到指定高亮');
+                    return;
+                }
+                
+                // 填充表单
+                $('#edit-highlight-id').val(id);
+                $('#edit-book-key').val(bookKey);
+                $('#edit-highlight-tags').val(highlight.tags ? highlight.tags.join(', ') : '');
+                $('#edit-highlight-note').val(highlight.note || '');
+                
+                // 显示编辑窗口
+                $('#highlight-editor').css('display', 'flex');
+            } catch (error) {
+                console.error('编辑高亮时出错:', error);
+            }
+        }
+        
+        // 保存高亮编辑
+        function saveHighlightEdit() {
+            try {
+                const id = $('#edit-highlight-id').val();
+                const bookKey = $('#edit-book-key').val();
+                
+                if (!id || !bookKey) {
+                    console.error('缺少必要参数');
+                    return;
+                }
+                
+                const highlights = window.highlightTemplate.manager.getHighlights(bookKey);
+                const highlight = highlights.find(h => h.id === id);
+                
+                if (!highlight) {
+                    console.error('未找到指定高亮');
+                    return;
+                }
+                
+                // 更新高亮数据
+                const tagsInput = $('#edit-highlight-tags').val();
+                highlight.tags = tagsInput ? tagsInput.split(',').map(t => t.trim()).filter(t => t) : [];
+                highlight.note = $('#edit-highlight-note').val();
+                
+                // 保存更新
+                window.highlightTemplate.manager.updateHighlight(highlight);
+                
+                // 关闭编辑窗口
+                $('#highlight-editor').hide();
+                
+                // 刷新表格
+                filterHighlights();
+                
+                displayAlert('高亮已更新', 'success');
+            } catch (error) {
+                console.error('保存高亮编辑时出错:', error);
+                displayAlert('保存失败', 'default');
+            }
+        }
+        
+        // 删除高亮
+        function deleteHighlight(id, bookKey) {
+            try {
+                if (confirm('确定要删除这个高亮吗？')) {
+                    const result = window.highlightTemplate.manager.deleteHighlight(bookKey, id);
+                    
+                    if (result) {
+                        // 刷新表格
+                        filterHighlights();
+                        displayAlert('高亮已删除', 'success');
+                    } else {
+                        displayAlert('删除失败', 'default');
+                    }
+                }
+            } catch (error) {
+                console.error('删除高亮时出错:', error);
+                displayAlert('删除失败', 'default');
+            }
+        }
+        
+        // 显示提醒信息
+        function displayAlert(text, type) {
+            $('#alert-text').text(text);
+            $('#alert-text').removeClass().addClass('main-text font-semibold text-white alert-' + type);
+            $('#alert-text').addClass('active');
+            setTimeout(function() {
+                $('#alert-text').removeClass('active');
+            }, 3000);
+        }
+    </script>
+</body>
+</html> 

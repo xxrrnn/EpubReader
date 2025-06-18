@@ -3,6 +3,11 @@ $(window).on('load', async function () {
     // Load books form jsonfile
     books_json = await window.bookConfig.getBooks();
     await loadBooks(books_json)
+    
+    // 添加高亮管理按钮点击事件
+    $('#highlights-manager-btn').on('click', function() {
+        window.location.href = 'highlights.html';
+    });
 });
 
 var sortingSettings = { sortby: "last_read"}
