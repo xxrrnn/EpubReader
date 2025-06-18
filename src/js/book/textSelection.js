@@ -1009,6 +1009,15 @@ function getFirstSignificantParagraph(element) {
       window.deleteSelectedHighlight();
       return false;
     }
+    
+    // CMD+U (Mac) 或 Ctrl+U (Windows/Linux) - 切换垂直/水平分页模式
+    if ((e.metaKey || e.ctrlKey) && (e.keyCode === 85 || e.key.toLowerCase() === 'u')) {
+      console.log("检测到CMD+U/Ctrl+U快捷键", e);
+      e.preventDefault(); // 阻止默认行为
+      e.stopPropagation(); // 阻止事件传播
+      window.togglePaginationMode();
+      return false;
+    }
   }, true); // 使用捕获阶段，确保在冒泡阶段之前处理
   
   // 在iframe中监听键盘事件（作为备用方案）
@@ -1044,6 +1053,15 @@ function getFirstSignificantParagraph(element) {
           e.preventDefault(); // 阻止默认行为
           e.stopPropagation(); // 阻止事件传播
           window.deleteSelectedHighlight();
+          return false;
+        }
+        
+        // CMD+U (Mac) 或 Ctrl+U (Windows/Linux) - 切换垂直/水平分页模式
+        if ((e.metaKey || e.ctrlKey) && (e.keyCode === 85 || e.key.toLowerCase() === 'u')) {
+          console.log("在iframe中检测到CMD+U/Ctrl+U快捷键", e);
+          e.preventDefault(); // 阻止默认行为
+          e.stopPropagation(); // 阻止事件传播
+          window.togglePaginationMode();
           return false;
         }
       };
@@ -1733,15 +1751,7 @@ function renderHighlightList(listElement, highlights) {
           if (highlight.epubCfi) {
             try {
               console.log("使用epubCfi跳转:", highlight.epubCfi);
-              // 保存当前视图设置
-              const viewSettings = saveViewSettings();
-              
-              // 进行跳转
               await window.book_rendition.display(highlight.epubCfi);
-              
-              // 恢复视图设置
-              restoreViewSettings(viewSettings);
-              
               return true;
             } catch (e) {
               console.warn("epubCfi跳转失败:", e);
@@ -1752,73 +1762,12 @@ function renderHighlightList(listElement, highlights) {
           if (highlight.cfi) {
             try {
               console.log("使用cfi跳转:", highlight.cfi);
-              // 保存当前视图设置
-              const viewSettings = saveViewSettings();
-              
-              // 不检查CFI有效性，直接尝试跳转
+              // 先检查CFI是否有效
+              window.book_epub.spine.get(highlight.cfi);
               await window.book_rendition.display(highlight.cfi);
-              
-              // 恢复视图设置
-              restoreViewSettings(viewSettings);
-              
-              // 在跳转后，尝试查找文本，以便更精确定位
-              setTimeout(() => {
-                try {
-                  const iframe = document.querySelector('iframe');
-                  if (iframe && iframe.contentDocument && highlight.text) {
-                    const searchText = highlight.text.trim();
-                    if (searchText.length > 3) {
-                      console.log("尝试在文档中查找高亮文本:", searchText);
-                      // 使用新的查找和高亮函数
-                      findAndHighlightText(iframe, searchText);
-                    }
-                  }
-                } catch (e) {
-                  console.warn("文本查找失败:", e);
-                }
-              }, 400); // 延迟确保页面已加载
-              
               return true;
             } catch (e) {
               console.warn("cfi跳转失败:", e);
-              
-              // 如果直接跳转失败，尝试使用正则表达式提取基本CFI部分
-              try {
-                const cfiMatch = highlight.cfi.match(/epubcfi\(([^!]+)[!]?/);
-                if (cfiMatch && cfiMatch[0]) {
-                  const baseCfi = cfiMatch[0].endsWith('!') ? cfiMatch[0].slice(0, -1) : cfiMatch[0];
-                  console.log("尝试使用基本CFI跳转:", baseCfi);
-                  
-                  // 保存当前视图设置
-                  const viewSettings = saveViewSettings();
-                  
-                  await window.book_rendition.display(baseCfi);
-                  
-                  // 恢复视图设置
-                  restoreViewSettings(viewSettings);
-                  
-                  // 在跳转后，尝试查找文本
-                  setTimeout(() => {
-                    try {
-                      const iframe = document.querySelector('iframe');
-                      if (iframe && iframe.contentDocument && highlight.text) {
-                        const searchText = highlight.text.trim();
-                        if (searchText.length > 3) {
-                          console.log("尝试在文档中查找高亮文本:", searchText);
-                          // 使用新的查找和高亮函数
-                          findAndHighlightText(iframe, searchText);
-                        }
-                      }
-                    } catch (e) {
-                      console.warn("文本查找失败:", e);
-                    }
-                  }, 400);
-                  
-                  return true;
-                }
-              } catch (regexError) {
-                console.warn("正则提取CFI失败:", regexError);
-              }
             }
           }
           
@@ -1834,6 +1783,9 @@ function renderHighlightList(listElement, highlights) {
               
               // 恢复视图设置
               restoreViewSettings(viewSettings);
+              
+              // 确保维持左右分页模式
+              ensurePageLayout(currentPaginationMode);
               
               // 在跳转后，尝试查找文本
               setTimeout(() => {
@@ -1864,31 +1816,7 @@ function renderHighlightList(listElement, highlights) {
               console.log("使用spinePosition跳转:", highlight.spinePosition);
               const spineItem = window.book_epub.spine.get(highlight.spinePosition);
               if (spineItem) {
-                // 保存当前视图设置
-                const viewSettings = saveViewSettings();
-                
                 await window.book_rendition.display(spineItem.href);
-                
-                // 恢复视图设置
-                restoreViewSettings(viewSettings);
-                
-                // 在跳转后，尝试查找文本
-                setTimeout(() => {
-                  try {
-                    const iframe = document.querySelector('iframe');
-                    if (iframe && iframe.contentDocument && highlight.text) {
-                      const searchText = highlight.text.trim();
-                      if (searchText.length > 3) {
-                        console.log("尝试在文档中查找高亮文本:", searchText);
-                        // 使用新的查找和高亮函数
-                        findAndHighlightText(iframe, searchText);
-                      }
-                    }
-                  } catch (e) {
-                    console.warn("文本查找失败:", e);
-                  }
-                }, 400);
-                
                 return true;
               }
             } catch (e) {
@@ -1904,75 +1832,13 @@ function renderHighlightList(listElement, highlights) {
                 const toc = window.book_epub.navigation.toc;
                 for (let i = 0; i < toc.length; i++) {
                   if (toc[i].label === highlight.chapter && toc[i].href) {
-                    // 保存当前视图设置
-                    const viewSettings = saveViewSettings();
-                    
                     await window.book_rendition.display(toc[i].href);
-                    
-                    // 恢复视图设置
-                    restoreViewSettings(viewSettings);
-                    
-                    // 在跳转后，尝试查找文本
-                    setTimeout(() => {
-                      try {
-                        const iframe = document.querySelector('iframe');
-                        if (iframe && iframe.contentDocument && highlight.text) {
-                          const searchText = highlight.text.trim();
-                          if (searchText.length > 3) {
-                            console.log("尝试在文档中查找高亮文本:", searchText);
-                            // 使用新的查找和高亮函数
-                            findAndHighlightText(iframe, searchText);
-                          }
-                        }
-                      } catch (e) {
-                        console.warn("文本查找失败:", e);
-                      }
-                    }, 400);
-                    
                     return true;
                   }
                 }
               }
             } catch (e) {
               console.warn("章节名称跳转失败:", e);
-            }
-          }
-          
-          // 如果上述方法都失败，但有文本内容，尝试在第一章查找文本
-          if (highlight.text) {
-            try {
-              console.log("尝试在第一章查找文本:", highlight.text.substring(0, 20) + "...");
-              if (window.book_epub && window.book_epub.spine && window.book_epub.spine.items && window.book_epub.spine.items.length > 0) {
-                // 保存当前视图设置
-                const viewSettings = saveViewSettings();
-                
-                // 跳转到第一章
-                await window.book_rendition.display(window.book_epub.spine.items[0].href);
-                
-                // 恢复视图设置
-                restoreViewSettings(viewSettings);
-                
-                // 在跳转后，尝试查找文本
-                setTimeout(() => {
-                  try {
-                    const iframe = document.querySelector('iframe');
-                    if (iframe && iframe.contentDocument && highlight.text) {
-                      const searchText = highlight.text.trim();
-                      if (searchText.length > 3) {
-                        console.log("尝试在文档中查找高亮文本:", searchText);
-                        // 使用新的查找和高亮函数
-                        findAndHighlightText(iframe, searchText);
-                      }
-                    }
-                  } catch (e) {
-                    console.warn("文本查找失败:", e);
-                  }
-                }, 400);
-                
-                return true;
-              }
-            } catch (e) {
-              console.warn("在第一章查找文本失败:", e);
             }
           }
           
@@ -2341,3 +2207,165 @@ function restoreViewSettings(settings) {
     }
   }
 }
+
+// 添加获取当前分页模式的函数
+function getCurrentPaginationMode() {
+  // 获取当前的分页模式
+  try {
+    const iframe = document.querySelector('iframe');
+    if (iframe && iframe.contentDocument) {
+      // 检查是否是上下滚动模式
+      const isVerticalMode = iframe.contentDocument.body.classList.contains('vertical-mode');
+      return isVerticalMode ? 'vertical' : 'horizontal';
+    }
+  } catch (e) {
+    console.warn("获取分页模式失败:", e);
+  }
+  // 默认返回水平分页模式
+  return 'horizontal';
+}
+
+// 添加确保页面布局的函数
+function ensurePageLayout(mode) {
+  try {
+    const iframe = document.querySelector('iframe');
+    if (iframe && iframe.contentDocument) {
+      const contentDoc = iframe.contentDocument;
+      
+      if (mode === 'horizontal') {
+        // 确保使用水平分页模式
+        contentDoc.body.classList.remove('vertical-mode');
+        
+        // 设置epub.js的页面布局为水平分页
+        if (window.book_rendition && window.book_rendition.manager) {
+          window.book_rendition.flow('paginated');
+          
+          // 重新应用水平分页的样式
+          const styleElement = contentDoc.getElementById('epub-horizontal-style');
+          if (!styleElement) {
+            const style = contentDoc.createElement('style');
+            style.id = 'epub-horizontal-style';
+            style.textContent = `
+              body {
+                overflow: hidden !important;
+                margin: 0 !important;
+                padding: 0 !important;
+              }
+              
+              body > * {
+                margin: 0 !important;
+                padding: 0 !important;
+              }
+            `;
+            contentDoc.head.appendChild(style);
+          }
+          
+          // 触发布局更新
+          window.book_rendition.resize();
+        }
+      }
+      
+      console.log("已设置页面布局模式:", mode);
+    }
+  } catch (e) {
+    console.warn("设置页面布局失败:", e);
+  }
+}
+
+// 添加切换垂直/水平分页模式的函数
+window.togglePaginationMode = function() {
+  try {
+    console.log("切换垂直/水平分页模式");
+    
+    const iframe = document.querySelector('iframe');
+    if (!iframe || !iframe.contentDocument) {
+      console.warn("找不到iframe或其contentDocument，无法切换分页模式");
+      return;
+    }
+    
+    const contentDoc = iframe.contentDocument;
+    const body = contentDoc.body;
+    
+    // 检查当前模式
+    const isVerticalMode = body.classList.contains('vertical-mode');
+    
+    if (isVerticalMode) {
+      // 切换到水平分页模式
+      console.log("切换到水平分页模式");
+      body.classList.remove('vertical-mode');
+      
+      // 设置epub.js的页面布局为水平分页
+      if (window.book_rendition && window.book_rendition.manager) {
+        window.book_rendition.flow('paginated');
+        
+        // 添加水平分页的样式
+        const styleElement = contentDoc.getElementById('epub-horizontal-style');
+        if (!styleElement) {
+          const style = contentDoc.createElement('style');
+          style.id = 'epub-horizontal-style';
+          style.textContent = `
+            body {
+              overflow: hidden !important;
+              margin: 0 !important;
+              padding: 0 !important;
+            }
+            
+            body > * {
+              margin: 0 !important;
+              padding: 0 !important;
+            }
+          `;
+          contentDoc.head.appendChild(style);
+        }
+        
+        // 触发布局更新
+        window.book_rendition.resize();
+      }
+    } else {
+      // 切换到垂直滚动模式（但只在文章内部）
+      console.log("切换到垂直滚动模式");
+      body.classList.add('vertical-mode');
+      
+      // 设置epub.js的页面布局为垂直滚动
+      if (window.book_rendition && window.book_rendition.manager) {
+        // 设置为滚动模式
+        window.book_rendition.flow('scrolled');
+        
+        // 添加垂直滚动的样式
+        const styleElement = contentDoc.getElementById('epub-vertical-style');
+        if (!styleElement) {
+          const style = contentDoc.createElement('style');
+          style.id = 'epub-vertical-style';
+          style.textContent = `
+            body {
+              overflow-y: auto !important;
+              height: 100% !important;
+              margin: 0 !important;
+              padding: 0 !important;
+            }
+            
+            body > * {
+              margin: 0 auto !important;
+              max-width: 800px !important;
+              padding: 0 20px !important;
+            }
+          `;
+          contentDoc.head.appendChild(style);
+        }
+        
+        // 触发布局更新
+        window.book_rendition.resize();
+      }
+    }
+    
+    // 渲染高亮（防止切换模式后高亮丢失）
+    setTimeout(() => {
+      console.log("重新渲染高亮");
+      renderHighlights();
+    }, 500);
+    
+    console.log("分页模式切换完成");
+  } catch (e) {
+    console.error("切换分页模式时出错:", e);
+  }
+};
