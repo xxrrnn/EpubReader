@@ -3,10 +3,13 @@
  * 监控EPUB阅读器中的文本选择，并实现文本高亮功能
  */
 
-// 全局变量，存储所有的高亮数据
+// 初始化全局变量
 window.highlights = [];
-// 存储索引为1的文本节点内容作为文章标题
-window.textNodeTitle = '';
+window.book_rendition = null;
+window.book_epub = null;
+window.book_location = null;
+window.book_chapterTitle = ''; // 当前章节标题
+window.epubCodeSearch = null;
 
 // 添加初始化监控，确保全局变量正确设置
 (function() {
@@ -186,10 +189,6 @@ window.highlightSelectedText = function() {
           if (pageTitle) {
             articleInfo = pageTitle;
           }
-          // 然后尝试使用索引为1的文本节点内容
-          else if (window.textNodeTitle) {
-            articleInfo = window.textNodeTitle;
-          }
           // 回退到其他方法
           else if (bookInfo && bookInfo.article && bookInfo.article !== '未知文章') {
             articleInfo = bookInfo.article;
@@ -220,7 +219,6 @@ window.highlightSelectedText = function() {
             sentence: sentence || selection_text,
             chapter: contextInfo ? contextInfo.chapterTitle : '',
             article: articleInfo, // 添加文章信息
-            textNodeTitle: window.textNodeTitle || null, // 保存文本节点[1]的内容
             bookInfo: bookInfo, // 保存完整的书籍信息
             timestamp: new Date().getTime(),
             created: new Date().toISOString()
@@ -249,9 +247,8 @@ window.highlightSelectedText = function() {
           text: selection_text,
           sentence: sentence || selection_text,
           chapter: contextInfo ? contextInfo.chapterTitle : '',
-          textNodeTitle: window.textNodeTitle || null, // 保存文本节点[1]的内容
           bookInfo: bookInfo, // 保存完整的书籍信息
-          article: getArticleTitle() || window.textNodeTitle || (bookInfo ? bookInfo.article : ''), // 优先使用页面中的标题
+          article: getArticleTitle() || (bookInfo ? bookInfo.article : ''), // 优先使用页面中的标题
           timestamp: new Date().getTime(),
           created: new Date().toISOString(),
           spinePosition: chapterIndex
@@ -836,14 +833,6 @@ function extractBookInfo() {
       while ((node = walker.nextNode()) && count < 5) {
         if (node.textContent.trim().length > 10) {
           console.log(`文本节点[${count}]:`, node.textContent.trim());
-          // 如果是索引为1的文本节点，保存为文章标题
-          if (count === 1) {
-            // 保存索引为1的文本节点内容到全局变量
-            window.textNodeTitle = node.textContent.trim();
-            console.log("保存索引为1的文本节点作为文章标题:", window.textNodeTitle);
-            // 同时设置到info对象
-            info.article = window.textNodeTitle;
-          }
           count++;
         }
       }
@@ -1443,6 +1432,9 @@ window.initHighlightListPopup = function() {
   const $tabButtons = $popup.querySelectorAll('.tab-button');
   const $highlightListBtn = document.getElementById('highlight-list-btn');
   
+  // 确保初始状态下弹窗是隐藏的
+  $popup.style.display = 'none';
+  
   // 当前章节和全部书籍的高亮列表元素
   const $currentHighlightsList = document.getElementById('current-chapter-highlights');
   const $allHighlightsList = document.getElementById('all-book-highlights');
@@ -1451,11 +1443,19 @@ window.initHighlightListPopup = function() {
   $highlightListBtn.addEventListener('click', function(e) {
     console.log("点击了高亮列表按钮");
     
-    // 加载高亮数据
-    window.loadHighlightsForPopup();
+    // 切换弹窗显示状态
+    if ($popup.style.display === 'block') {
+      // 如果已经显示，则隐藏
+      $popup.style.display = 'none';
+    } else {
+      // 如果隐藏，则显示并加载数据
+      // 加载高亮数据
+      window.loadHighlightsForPopup();
+      
+      // 显示弹窗
+      $popup.style.display = 'block';
+    }
     
-    // 显示弹窗
-    $popup.style.display = 'block';
     e.preventDefault();
   });
   
@@ -1661,26 +1661,8 @@ function renderHighlightList(listElement, highlights) {
     let timeStr = '';
     
     // 尝试获取最有意义的上下文信息
-    // 优先使用保存的文本节点[1]或article字段
-    if (highlight.textNodeTitle) {
-      contextInfo = highlight.textNodeTitle;
-    } else if (window.textNodeTitle) {
-      // 这是当前章节的文本节点[1]，只有当高亮在当前章节时使用
-      if (highlight.href && window.book_rendition && window.book_rendition.location) {
-        let currentHref = '';
-        try {
-          if (window.book_rendition.location().start) {
-            currentHref = window.book_rendition.location().start.href;
-          }
-        } catch (e) {}
-        
-        // 如果高亮在当前章节，可以使用当前的文本节点标题
-        if (currentHref && highlight.href && 
-            (currentHref.includes(highlight.href) || highlight.href.includes(currentHref))) {
-          contextInfo = window.textNodeTitle;
-        }
-      }
-    } else if (highlight.article) {
+    // 优先使用article字段
+    if (highlight.article) {
       contextInfo = highlight.article;
     }
     // 回退到其他可用信息
@@ -2209,77 +2191,10 @@ window.deleteSelectedHighlight = function() {
   }
 };
 
-// 高亮iframe中匹配的文本
+// 高亮iframe中匹配的文本 - 这个函数已不再使用，保留代码供参考
 function highlightMatchedText(iframe, searchText) {
-  if (!iframe || !iframe.contentDocument || !searchText || searchText.length < 3) return;
-  
-  try {
-    const doc = iframe.contentDocument;
-    const body = doc.body;
-    
-    // 保存当前滚动位置
-    const currentScrollLeft = doc.documentElement.scrollLeft;
-    
-    // 递归查找文本节点并高亮匹配文本
-    function traverseNodes(node) {
-      if (node.nodeType === Node.TEXT_NODE) {
-        const text = node.nodeValue;
-        if (text && text.includes(searchText)) {
-          // 找到匹配的文本，创建高亮元素
-          const range = doc.createRange();
-          const startIndex = text.indexOf(searchText);
-          
-          range.setStart(node, startIndex);
-          range.setEnd(node, startIndex + searchText.length);
-          
-          const highlightSpan = doc.createElement('span');
-          highlightSpan.className = 'temp-highlight';
-          highlightSpan.style.backgroundColor = 'yellow';
-          highlightSpan.style.color = 'black';
-          highlightSpan.style.transition = 'background-color 2s';
-          
-          range.surroundContents(highlightSpan);
-          
-          // 滚动到高亮元素（保持水平位置不变）
-          highlightSpan.scrollIntoView({
-            behavior: 'smooth',
-            block: 'center',
-            inline: 'nearest'
-          });
-          
-          // 恢复原来的水平滚动位置
-          setTimeout(() => {
-            doc.documentElement.scrollLeft = currentScrollLeft;
-          }, 50);
-          
-          // 2秒后移除高亮效果
-          setTimeout(() => {
-            if (highlightSpan.parentNode) {
-              // 替换回原始文本
-              const textNode = doc.createTextNode(searchText);
-              highlightSpan.parentNode.replaceChild(textNode, highlightSpan);
-            }
-          }, 2000);
-          
-          return true; // 找到了匹配
-        }
-      } else if (node.nodeType === Node.ELEMENT_NODE) {
-        // 递归处理子节点
-        for (let i = 0; i < node.childNodes.length; i++) {
-          if (traverseNodes(node.childNodes[i])) {
-            return true; // 找到了匹配
-          }
-        }
-      }
-      return false; // 没有找到匹配
-    }
-    
-    // 从body开始遍历
-    return traverseNodes(body);
-  } catch (e) {
-    console.warn("高亮匹配文本失败:", e);
-    return false;
-  }
+  console.log("highlightMatchedText函数已不再使用，请使用findAndHighlightText函数");
+  return false;
 }
 
 // 使用原生查找和高亮组合方式
@@ -2292,86 +2207,94 @@ function findAndHighlightText(iframe, searchText) {
     // 获取文档
     const doc = iframe.contentDocument;
     
-    // 尝试使用浏览器内置的查找功能
-    if (iframe.contentWindow && iframe.contentWindow.find) {
-      // 记住当前滚动位置
-      const currentScrollLeft = doc.documentElement.scrollLeft;
+    // 首先查找已经被高亮的文本
+    const existingHighlights = doc.querySelectorAll('.highlight-text');
+    console.log(`找到 ${existingHighlights.length} 个已存在的高亮元素`);
+    
+    // 遍历所有已存在的高亮元素，检查是否包含搜索文本
+    for (let i = 0; i < existingHighlights.length; i++) {
+      const highlightElement = existingHighlights[i];
+      const highlightText = highlightElement.textContent.trim();
       
-      // 重置查找状态
-      iframe.contentWindow.find(''); // 清除之前的查找
-      
-      // 设置查找参数：向前查找，区分大小写，查找所有
-      const found = iframe.contentWindow.find(searchText, false, false, true, false, true, false);
-      
-      if (found) {
-        console.log("使用浏览器查找功能找到文本:", searchText);
+      // 检查高亮元素是否包含要搜索的文本
+      if (highlightText === searchText) {
+        console.log("在已高亮元素中找到匹配文本:", searchText);
         
-        // 获取当前选中的范围
-        const selection = iframe.contentWindow.getSelection();
-        if (selection && selection.rangeCount > 0) {
-          const range = selection.getRangeAt(0);
-          
-          try {
-            // 创建高亮元素
-            const span = doc.createElement('span');
-            span.className = 'temp-highlight';
-            span.style.backgroundColor = 'rgba(255, 255, 0, 0.5)';
-            span.style.borderRadius = '3px';
-            span.style.padding = '2px 0';
-            
-            // 将范围内容包装在高亮元素中
-            range.surroundContents(span);
-            
-            // 确保高亮元素在视图中
-            span.scrollIntoView({
-              behavior: 'smooth',
-              block: 'center',
-              inline: 'nearest'
-            });
-            
-            // 设置定时器，在一段时间后移除高亮
-            setTimeout(() => {
-              if (span.parentNode) {
-                // 保留原文本内容
-                const textContent = span.textContent;
-                const textNode = iframe.contentDocument.createTextNode(textContent);
-                span.parentNode.replaceChild(textNode, span);
-              }
-            }, 10000); // 延长高亮持续时间到10秒
-            
-            return true;
-          } catch (e) {
-            console.warn("创建高亮失败:", e);
-            // 如果环绕失败，至少确保滚动到选中区域
-            const selection = iframe.contentWindow.getSelection();
-            if (selection && !selection.isCollapsed) {
-              const range = selection.getRangeAt(0);
-              if (range.startContainer.parentElement) {
-                range.startContainer.parentElement.scrollIntoView({
-                  behavior: 'smooth',
-                  block: 'center',
-                  inline: 'nearest'
-                });
-                
-                // 恢复原来的水平滚动位置
-                setTimeout(() => {
-                  iframe.contentDocument.documentElement.scrollLeft = currentScrollLeft;
-                }, 50);
-                
-                return true;
-              }
-            }
-          }
-        }
-      } else {
-        // 如果浏览器查找失败，尝试手动查找和高亮
-        return highlightMatchedText(iframe, searchText);
+        // 创建临时高亮效果
+        const originalBackground = highlightElement.style.backgroundColor;
+        const originalColor = highlightElement.style.color;
+        
+        // 应用闪烁效果
+        highlightElement.style.backgroundColor = 'yellow';
+        highlightElement.style.color = 'black';
+        highlightElement.style.transition = 'background-color 0.5s';
+        
+        // 滚动到高亮元素
+        highlightElement.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+          inline: 'nearest'
+        });
+        
+        // 10秒后恢复原样
+        setTimeout(() => {
+          highlightElement.style.backgroundColor = originalBackground;
+          highlightElement.style.color = originalColor;
+        }, 10000);
+        
+        return true;
       }
     }
+    
+    // 如果在已高亮元素中没有找到匹配，尝试查找带有相同ID的高亮元素
+    // 这是为了处理DOM可能已经重新渲染的情况
+    if (window.highlights && window.highlights.length > 0) {
+      // 找到文本匹配的高亮记录
+      const matchingHighlights = window.highlights.filter(h => h.text.trim() === searchText.trim());
+      
+      if (matchingHighlights.length > 0) {
+        console.log(`找到 ${matchingHighlights.length} 个匹配的高亮记录`);
+        
+        // 尝试使用第一个匹配记录的ID查找DOM元素
+        const highlightId = matchingHighlights[0].id;
+        const highlightElement = doc.querySelector(`.highlight-text[data-id="${highlightId}"]`);
+        
+        if (highlightElement) {
+          console.log("通过ID找到匹配的高亮元素:", highlightId);
+          
+          // 应用闪烁效果
+          const originalBackground = highlightElement.style.backgroundColor;
+          const originalColor = highlightElement.style.color;
+          
+          highlightElement.style.backgroundColor = 'yellow';
+          highlightElement.style.color = 'black';
+          highlightElement.style.transition = 'background-color 0.5s';
+          
+          // 滚动到高亮元素
+          highlightElement.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center',
+            inline: 'nearest'
+          });
+          
+          // 10秒后恢复原样
+          setTimeout(() => {
+            highlightElement.style.backgroundColor = originalBackground;
+            highlightElement.style.color = originalColor;
+          }, 10000);
+          
+          return true;
+        }
+      }
+    }
+    
+    // 如果没有找到已高亮的匹配文本，返回false
+    console.log("未找到已高亮的匹配文本");
+    return false;
   } catch (e) {
     console.warn("文本查找和高亮失败:", e);
+    return false;
   }
-  return false;
 }
 
 // 保存当前视图设置
