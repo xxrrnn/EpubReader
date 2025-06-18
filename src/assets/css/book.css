@@ -477,66 +477,89 @@
     margin: 0;
 }
 
+/* 高亮列表样式 */
 .popup-highlight-item {
-    padding: 12px;
-    margin-bottom: 12px;
-    border-left: 3px solid #ddd;
-    background-color: #f9f9f9;
-    border-radius: 3px;
-    position: relative;
-    transition: all 0.2s ease;
-    cursor: pointer;
+  border-bottom: 1px solid #eee;
+  padding: 10px;
+  cursor: pointer;
+  transition: background-color 0.2s;
 }
 
 .popup-highlight-item:hover {
-    background-color: #f0f0f0;
+  background-color: #f5f5f5;
 }
 
-.popup-highlight-item.highlight-type-word {
-    border-left-color: yellow;
-}
-
-.popup-highlight-item.highlight-type-phrase {
-    border-left-color: orange;
-}
-
-.popup-highlight-item.highlight-type-sentence {
-    border-left-color: #8eff52;
+.popup-highlight-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
 }
 
 .popup-highlight-text {
-    font-size: 14px;
-    margin-bottom: 5px;
-    color: #333;
-    line-height: 1.4;
-    font-weight: normal;
+  font-size: 14px;
+  margin-bottom: 5px;
+  color: #333;
 }
 
 .popup-highlight-info {
-    font-size: 12px;
-    color: #777;
-    display: flex;
-    justify-content: space-between;
-    margin-top: 8px;
+  font-size: 12px;
+  color: #777;
+  display: flex;
+  justify-content: space-between;
 }
 
 .popup-highlight-chapter {
-    max-width: 70%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: #555;
-    font-style: italic;
+  max-width: 70%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .popup-highlight-time {
-    color: #888;
-    font-size: 11px;
+  color: #999;
 }
 
-.popup-highlight-item.empty {
-    text-align: center;
-    color: #999;
-    font-style: italic;
-    padding: 20px;
+.popup-highlight-delete {
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.popup-highlight-item:hover .popup-highlight-delete {
+  opacity: 1;
+}
+
+/* 控制EPUB容器的滚动条显示 */
+[id^="epubjs-container-"] {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+}
+
+/* 修改垂直滚动模式下的样式 */
+.vertical-mode {
+  overflow-y: auto !important;
+  height: 100% !important;
+}
+
+/* 确保水平模式下的样式 */
+iframe body:not(.vertical-mode) {
+  overflow: hidden !important;
+}
+
+/* 增强高亮元素样式 */
+.temp-highlight {
+  background-color: #ffff00 !important; /* 亮黄色 */
+  box-shadow: 0 0 5px rgba(255, 255, 0, 0.8) !important; /* 黄色光晕效果 */
+  color: #000 !important;
+  border-radius: 3px !important;
+  padding: 2px 4px !important;
+  transition: background-color 2s ease !important;
+  animation: highlight-pulse 1.5s ease-in-out 2; /* 添加脉冲动画效果 */
+}
+
+/* 高亮脉冲动画 */
+@keyframes highlight-pulse {
+  0% { box-shadow: 0 0 5px rgba(255, 255, 0, 0.8); }
+  50% { box-shadow: 0 0 15px rgba(255, 255, 0, 1); }
+  100% { box-shadow: 0 0 5px rgba(255, 255, 0, 0.8); }
 }
